@@ -1,8 +1,12 @@
-# 역할과 보고 형식
+# 역할·모델·보고 규약
 
-- **Lead**: 범위·계획·최종 변경을 확인하고 체크리스트를 갱신한다.
-- **Worker**: 요청한 작은 작업만 구현하고 변경 파일·테스트·위험을 보고한다.
-- **QA**: diff와 테스트 결과를 독립 검토해 `PASS`·`FIX`·`BLOCKED`를 반환한다.
+| 역할 | 모델 / 권장 reasoning | 책임 |
+|---|---|---|
+| Lead | 실제 Sol / high | 범위·diff·테스트 확인, 체크 갱신 |
+| ROUTINE Worker | 실제 Terra / medium | 한 책임 단위 구현·자체 테스트 |
+| COMPLEX Worker | 실제 Luna / high | 복잡 작업. 미제공이면 BLOCKED/재분해 |
+| Independent QA | 새 실제 Sol / high | diff·테스트 독립 검토 |
 
-Worker/QA 계약은 별도 스키마 파일이 아니라 위 세 항목을 담은 짧은 위임 메시지다.
-계획과 코드의 최종 판단은 Lead가 한다.
+Worker와 QA는 `fork_turns: "none"` 수준의 최소 컨텍스트로 생성한다. 보고에는 변경 파일,
+테스트, requested/actual model, reasoning effort, 위험을 남긴다. 계약은 별도 JSON 스키마가
+아니라 이 필드를 담은 짧은 위임 메시지다.

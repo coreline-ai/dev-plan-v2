@@ -1,7 +1,7 @@
 # 실행 흐름
 
-상세 흐름은 [references/execution-workflow.md](../references/execution-workflow.md)를
-따른다.
+상세 흐름은 [실행 흐름](../references/execution-workflow.md)을 따른다.
 
-명시적인 실행 요청이 없으면 계획만 만든다. 실행 시에는 한 Phase씩 diff와 테스트를
-확인하고, QA `FIX` 또는 `BLOCKED`를 완료로 바꾸지 않는다.
+실행 전 Lead는 실제 Sol 모델을 확인한다. ROUTINE 작업은 Terra, COMPLEX 작업은 실제
+Luna가 있을 때만 배정한다. QA는 Worker와 다른 새 Sol 컨텍스트다. 모든 실행 보고에는
+requested/actual model과 reasoning effort, 변경 파일, 실제 테스트 결과를 남긴다.

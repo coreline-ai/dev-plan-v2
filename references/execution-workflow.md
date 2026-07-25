@@ -1,26 +1,24 @@
-# 간단한 실행 흐름
+# 실행·재개·QA 흐름
 
-## PLAN
+## 실행 전
 
-프로젝트를 읽고 작은 Phase로 나눈 뒤 계획을 만든다. 계획 생성 뒤 형식 검사만 한다.
+1. 계획을 `--ready`로 검사한다.
+2. 실제 런타임 모델을 확인한다.
+3. Lead는 Sol/high, ROUTINE Worker는 Terra/medium, COMPLEX Worker는 Luna/high,
+   QA는 새 Sol/high로 명시 배정한다.
+4. 요구 모델이 없으면 모델을 추정·대체하지 않고 `BLOCKED`로 기록하거나 계획을
+   Terra-safe 책임 단위로 재분해한다.
 
-## EXECUTE
+## 실행
 
-1. 명시적 실행 요청과 최신 계획을 확인한다.
-2. 첫 미완료 Phase의 범위와 테스트를 확인한다.
-3. 필요할 때만 native Codex Worker에게 하나의 독립 작업을 위임한다.
-4. Lead가 diff와 테스트 결과를 확인한다.
-5. 확인한 체크리스트와 실행 기록만 갱신한다.
+Worker는 `fork_turns: "none"` 수준의 최소 컨텍스트에서 한 책임 단위만 수행한다.
+목표, 허용 변경 범위, 완료 조건, 테스트 명령, 보고 형식을 제공한다. Worker 보고에는
+변경 파일, 실제 테스트 결과, requested/actual model, reasoning effort, 위험을 넣는다.
+Lead는 diff와 테스트를 재확인한 뒤에만 체크를 갱신한다.
 
-Worker 보고에는 변경 파일, 실행한 테스트, 결과, 미해결 위험을 요구한다. 별도
-attestation·evidence manifest·worktree protocol은 만들지 않는다.
+## 재개와 QA
 
-## QA
-
-새 컨텍스트의 QA에게 diff, 변경 파일, 테스트 결과, 완료 기준을 준다. QA는 `PASS`,
-`FIX`, `BLOCKED` 중 하나를 반환한다. `FIX`와 `BLOCKED`는 완료가 아니다.
-
-## RESUME
-
-계획 체크와 Git diff, 마지막 테스트 결과를 확인한다. 확인 가능한 첫 미완료 항목부터
-재개한다. 상태가 불명확하면 추정하지 말고 사용자에게 확인한다.
+RESUME은 첫 미완료 Phase부터 시작한다. 마지막 diff·테스트·모델 기록이 불명확하면
+`BLOCKED`로 남기고 확인 사항을 적는다. QA는 Worker와 다른 새 Sol 컨텍스트에서
+실제 diff와 테스트만 검토해 `PASS`, `FIX`, `BLOCKED`를 반환한다. `FIX`와 `BLOCKED`는
+완료가 아니다.
