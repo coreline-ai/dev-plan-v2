@@ -81,7 +81,7 @@ v2에서 추가할 요소:
 - 고유 Plan/Phase/DEV/TEST/QA ID
 - 예상 변경 경로와 경로 소유권
 - 태스크 의존성 및 병렬 실행 가능 여부
-- 라우팅 복잡도와 실제 모델 식별자
+- 라우팅 복잡도와 런타임 enum에서 선택한 exact 모델 식별자
 - 구체적인 완료 기준과 검증 명령
 - planning revision, execution baseline, attempt별 input/output state, diff 및 실행 증빙
 - Independent QA 게이트와 재작업 횟수
@@ -101,7 +101,7 @@ v2에서 추가할 요소:
 | Lead와 QA | 런타임이 제공하는 Sol |
 | 일반 Worker | 런타임이 제공하는 Terra |
 | 복잡 Worker | Luna가 실제 제공될 때만 사용 |
-| Luna 부재 | 태스크 분할 후 Terra 재평가, 불가능하면 `BLOCKED` |
+| Luna 부재 | 현재 계획 `BLOCKED`, 범위 보존 replacement 계획에서 Terra-safe 분할 |
 | 현재 실행자가 Sol이 아님/불명 | 새 Sol Lead 생성, 불가능하면 상태 변경 모드 `BLOCKED` |
 | QA 컨텍스트 | 신규 에이전트, 최소 문맥, 이전 판정 미전달 |
 | Worker/QA 작업공간 | 태스크·attempt별 disposable worktree 또는 snapshot |
@@ -114,10 +114,16 @@ v2에서 추가할 요소:
 현재 확인된 모델은 `gpt-5.6-sol`과 `gpt-5.6-terra`다. Luna 식별자는 확인되지
 않았으므로 구현과 테스트에서 Luna를 존재하는 것처럼 호출하면 안 된다.
 
-계획 문서는 논리 역할과 실제 모델을 분리해 기록한다.
+현재 위임 도구는 per-agent writable-root를 강제하지 않고 작업공간을 공유한다.
+따라서 현재 환경의 기본은 `MANIFEST_GUARDED`다. 이 모드는 협력적 에이전트의
+범위 이탈을 전후 manifest로 탐지하며 악의적 에이전트에 대한 보안 sandbox는 범위
+밖이다. 필수 무결성 보호 장치를 만들 수 없으면 실행을 `BLOCKED`한다.
+
+계획 문서는 논리 역할과 exact requested model을 분리해 기록한다.
 
 - `worker_tier`: `TERRA`, `LUNA`, `UNASSIGNED`
-- `assigned_model`: 런타임이 반환한 실제 모델 식별자 또는 `UNASSIGNED`
+- `assigned_model`: 런타임 enum에 존재하고 spawn에 성공한 exact requested model
+  식별자 또는 `UNASSIGNED`
 
 ## 8. 구현 착수 기준
 

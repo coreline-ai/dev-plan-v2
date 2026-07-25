@@ -129,6 +129,8 @@ interface:
 
 성공은 종료 코드 `0`, 검증 실패는 `1`, 사용법 또는 내부 오류는 `2`를 반환한다.
 사람이 읽는 텍스트 출력과 선택적 `--format json` 출력을 제공한다.
+`--candidate-event`가 있으면 현재 문서를 바꾸지 않고 이벤트 payload를 메모리에
+적용한 목표 상태를 검증한다.
 
 ### `scripts/update_plan_state.py`
 
@@ -176,18 +178,27 @@ dev-plan/
         ├── <task-id>/
         │   └── attempt-0001/
         │       ├── contract.yaml
+        │       ├── input-manifest.yaml
         │       ├── worker-report.yaml
         │       ├── test.log
         │       ├── pre-state.json
         │       ├── post-state.json
-        │       └── diff.patch
+        │       ├── diff.patch
+        │       └── evidence-manifest.yaml
+        ├── <test-id>/
+        │   └── attempt-0001/
+        │       ├── input-manifest.yaml
+        │       ├── test.log
+        │       └── evidence-manifest.yaml
         ├── <qa-id>/
         │   └── attempt-0001/
         │       ├── qa-contract.yaml
+        │       ├── input-manifest.yaml
         │       ├── qa-response.txt
         │       ├── qa-report.yaml
         │       ├── pre-state.json
-        │       └── post-state.json
+        │       ├── post-state.json
+        │       └── evidence-manifest.yaml
         └── state-history/
 ```
 
@@ -201,9 +212,10 @@ dev-plan/
 1. 런타임에서 위임 도구와 사용 가능한 모델을 확인한다.
 2. `ROUTINE` 태스크는 Terra 계열에 배정한다.
 3. `COMPLEX` 태스크는 Luna가 실제 제공될 때만 Luna에 배정한다.
-4. Luna가 없으면 경로·의존성·완료 기준을 기준으로 태스크를 축소 분할한다.
-5. 분할된 각 태스크가 독립적으로 검증 가능할 때만 Terra로 재배정한다.
-6. 안전한 분할이 불가능하면 계획을 `BLOCKED`로 전환한다.
+4. Luna가 없으면 현재 계획을 `BLOCKED`로 전환한다.
+5. 경로·의존성·완료 기준을 기준으로 Terra-safe 태스크를 담은 replacement v2 계획을
+   새 plan ID로 생성하고 원 계획을 참조한다.
+6. replacement 계획이 executable 검증을 통과한 뒤에만 실행한다.
 
 계획에는 논리 등급과 실제 식별자를 모두 기록한다.
 
@@ -215,6 +227,14 @@ Worker와 QA는 `fork_turns: "none"`과 정확한 모델 식별자를 명시해 
 
 ## 6. 격리 실행
 
+- `EXECUTE`, `RESUME`, `QA` 시작 전 런타임의 에이전트별 writable-root capability를
+  preflight하고 결과를 `CAPABILITY` 또는 `MANIFEST_GUARDED`로 기록한다.
+- 현재 내장 위임처럼 강제 writable-root가 없으면 `MANIFEST_GUARDED`를 사용한다.
+  이는 협력적 에이전트의 실수와 범위 이탈을 탐지하는 무결성 모델이며 악의적
+  에이전트를 막는 보안 sandbox라고 주장하지 않는다.
+- `MANIFEST_GUARDED`에서는 원본 전체 보호 manifest, control-plane hash inventory,
+  source integration lock, disposable workspace, invalidation/BLOCKED 규칙을 모두
+  적용할 수 있을 때만 실행한다.
 - Worker와 QA는 원본 작업공간을 직접 수정하는 방식으로 병렬 실행하지 않는다.
 - Git clean 상태는 태스크별 disposable worktree를 사용한다.
 - dirty Git 또는 비-Git 상태는 전체 보호 범위가 포함된 disposable snapshot을

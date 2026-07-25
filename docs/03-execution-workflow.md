@@ -18,9 +18,9 @@ flowchart TD
     H --> I{"런타임 모델과 복잡도"}
     I -- "Routine" --> J["Terra Worker"]
     I -- "Complex + Luna 사용 가능" --> K["Luna Worker"]
-    I -- "Complex + Luna 없음" --> L["안전한 작업 분할"]
-    L -- "가능" --> J
-    L -- "불가능" --> M["BLOCKED"]
+    I -- "Complex + Luna 없음" --> L["현재 계획 BLOCKED + replacement 계획"]
+    L -- "검증된 Terra-safe 계획" --> J
+    L -- "분할 불가능" --> M["BLOCKED"]
     J --> N["자체 테스트·증빙"]
     K --> N
     N --> O["새 Independent QA Sol"]
@@ -52,6 +52,10 @@ flowchart TD
 6. 상태 변경 모드에서 Sol Lead를 생성할 수 없거나 필요한 파일·런타임 도구가 없으면
    임의 대체하지 않고 해당 모드의 실패
    형식으로 보고한다.
+7. Worker/QA가 필요한 모드는 writable-root capability를 확인한다. 미지원이면
+   `MANIFEST_GUARDED` 무결성 모델의 전체 보호 manifest·control-plane inventory·
+   disposable workspace·integration lock을 준비한다. 이 보호 장치 중 하나라도
+   준비할 수 없을 때만 `BLOCKED`다.
 
 ## 3. PLAN
 
@@ -60,8 +64,10 @@ flowchart TD
 3. `new_dev_plan.py`로 새 `DRAFT` 계획을 생성한다.
 4. 실제 프로젝트 구조를 확인해 예상 변경 경로와 검증 명령을 구체화한다.
 5. `validate_dev_plan.py --level structural`을 실행한다.
-6. Git revision 또는 비-Git manifest와 planning evidence를 캡처한다.
-7. 누락을 보완한 뒤 `--level executable --target-state READY`를 실행한다.
+6. Git revision 또는 비-Git manifest와 planning evidence를 외부 candidate로
+   캡처한다.
+7. 누락을 보완한 뒤 `PLAN_READY` payload를 만들어
+   `--level executable --candidate-event EVENT.yaml --target-state READY`를 실행한다.
 8. 준비 검증이 통과하면 Lead가 상태를 `READY`로 전환한다.
 9. 제품 코드 수정과 Worker 생성은 하지 않는다.
 
@@ -72,8 +78,9 @@ flowchart TD
 3. 목적·범위·Phase·태스크·테스트를 보존 가능한 범위에서 변환한다.
 4. 추론할 수 없는 경로·의존성·완료 기준·검증 명령은 `TODO`로 남긴다.
 5. structural 검증을 자동 실행한다.
-6. `TODO`가 없으면 planning revision/evidence를 캡처한다.
-7. `--level executable --target-state READY`를 실행한다.
+6. `TODO`가 없으면 planning revision/evidence candidate를 캡처한다.
+7. `PLAN_READY` payload와
+   `--level executable --candidate-event EVENT.yaml --target-state READY`를 실행한다.
 8. 성공하면 `PLAN_READY` 이벤트로 `READY`로 전환한다.
 9. executable 검증 실패 또는 `TODO` 존재 시 `DRAFT`로 반환한다.
 10. 제품 코드 수정과 Worker 생성은 하지 않는다.
@@ -110,9 +117,11 @@ validate_dev_plan.py PLAN.md --level executable
 - Phase별 QA와 `QA-FINAL`
 - 재작업 횟수와 증빙 참조
 
-현재 상태를 바꾸기 전에 `--target-state READY|IN_PROGRESS|QA`를 추가하면 현재 상태가
-아닌 목표 상태의 불변식을 검사한다. `DRAFT → READY`와 `BLOCKED → blocked_from`
-검증은 반드시 `--target-state`를 사용한다. 검증기는 파일을 자동 변경하지 않는다.
+현재 상태를 바꾸기 전에 `--target-state READY|IN_PROGRESS|QA`와
+`--candidate-event EVENT_PAYLOAD.yaml`을 추가하면 현재 문서와 아직 적용되지 않은
+payload로 candidate 문서를 메모리에서 만들어 목표 상태 불변식을 검사한다.
+`DRAFT → READY`, `READY → IN_PROGRESS`, `BLOCKED → blocked_from`은 반드시 이
+방식을 사용한다. 검증기는 파일을 자동 변경하지 않는다.
 
 ### 5.3 출력 계약
 
@@ -139,9 +148,11 @@ errors:
 
 - planning revision/evidence를 현재 상태와 비교한다.
 - 이미 존재하는 사용자 변경은 보존하며 Worker 결과와 분리한다.
-- 현재 계획이 여전히 유효하면 현재 전체 보호 상태를 별도 execution baseline으로
-  캡처하고 `EXECUTION_STARTED` 이벤트에서 `READY → IN_PROGRESS`와 함께 기록한다.
-- 차이가 있으면 영향 범위를 다시 검증하고 `--target-state IN_PROGRESS`를 수행한다.
+- 현재 계획이 여전히 유효하면 현재 전체 보호 상태를 별도 execution baseline
+  candidate로 캡처하고 `--candidate-event` 검증 후 `EXECUTION_STARTED` 이벤트에서
+  `READY → IN_PROGRESS`와 함께 기록한다.
+- 차이가 있으면 영향 범위를 다시 검증하고 candidate target IN_PROGRESS 검증을
+  수행한다.
 - 범위·경로·완료 기준에 영향을 주거나 기준 상태를 재구성할 수 없으면 `BLOCKED`다.
 
 ### 6.2 실행 가능 태스크 선택
@@ -169,6 +180,10 @@ Lead는 다음 조건을 모두 만족하는 태스크만 선택한다.
 병렬 Worker도 원본 worktree를 공유하지 않는다. 태스크별 disposable worktree 또는
 snapshot을 만들고, 런타임의 동시 agent slot 안에서 wave로 실행한다. 가용 슬롯을
 확정할 수 없거나 생성이 실패하면 병렬 성공으로 간주하지 않고 순차 실행한다.
+병렬은 clean Git 대상만 허용한다. 같은 wave의 patch를 공통 input state 기반
+integration worktree에 batch 적용해 aggregate patch와 output state를 만들고,
+통합 테스트를 통과한 output state에서 다음 wave를 시작한다. dirty Git과 비-Git은
+항상 순차 실행한다.
 
 ### 6.4 작업 계약과 Worker
 
@@ -194,25 +209,33 @@ lease가 만료되면 Lead는 attempt를 무효화하고 격리 공간의 상태
 
 ### 7.1 생성 규칙
 
-- Phase의 태스크가 모두 `WORKER_DONE`이고 TEST가 모두 `PASS`면 새 Sol QA를 생성한다.
+- Phase의 태스크가 모두 `WORKER_DONE|DONE`이고 TEST가 모두 `PASS`면 새 Sol QA를
+  생성한다.
 - 런타임 위임 도구에 `fork_turns: "none"`과 실제 지원되는 Sol 식별자를 명시한다.
 - 전체 이력 상속 또는 모델 fallback은 금지하며 요청한 조건으로 생성할 수 없으면
   `BLOCKED`다.
 - 원본 요구사항, 계획, 계약, 실제 diff, 테스트 로그만 전달한다.
 - Lead 예상 판정, Worker 자기평가, 이전 QA 결론은 전달하지 않는다.
 - 재검증 때는 새 QA 에이전트와 새 attempt를 사용한다.
-- agent ID, 요청 모델, 실제 모델, context mode를 QA attempt evidence에 기록한다.
+- 모델 enum snapshot, agent ID, 요청 모델, spawn 성공 결과, context mode를 QA
+  attempt evidence에 기록한다. 런타임이 실제 모델을 명시적으로 반환할 때만
+  `actual_model`을 추가하며, 그렇지 않으면 성공한 exact override를
+  `assigned_model=requested_model`의 근거로 사용한다.
 
 ### 7.2 QA 무수정 보장
 
 1. Worker 결과가 적용된 disposable QA worktree/snapshot을 생성한다.
 2. QA 시작 직전 격리 공간과 실제 작업공간의 전체 보호 manifest를 캡처한다.
 3. QA는 격리 공간에서 읽기·테스트만 수행하고 보고서를 최종 응답으로 반환한다.
-4. Lead가 응답 원문을 변경하지 않고 `qa-response.txt`로 저장해 SHA-256을 기록한 뒤
-   구조화된 `qa-report.yaml`을 검증·저장한다.
-5. QA 종료 직후 두 공간의 manifest를 다시 캡처한다.
-6. 실제 작업공간 변경 또는 허용되지 않은 격리 공간 변경이 있으면 attempt를
+4. Lead는 응답을 메모리에 보관한 채 QA 종료 직후 두 공간의 post-manifest와 기존
+   contract·diff·log의 control-plane hash inventory를 먼저 캡처한다.
+5. 실제 작업공간 변경 또는 허용되지 않은 격리 공간 변경이 있으면 attempt를
    `INVALID`로 보존하고 판정에 사용하지 않는다.
+6. 무수정·무변조 검사가 통과하면 Lead가 응답 원문을 secret scan한다. secret이
+   없을 때만 byte-for-byte로 append-only attempt sink의 `qa-response.txt`에
+   저장하고 SHA-256을 기록한 뒤 `qa-report.yaml`과
+   `evidence-manifest.yaml`을 검증·저장한다. secret이 발견되면 raw 응답을
+   저장하지 않고 attempt를 무효화해 `BLOCKED` 처리한다.
 7. 격리 공간은 원본 복구에 사용하지 않고 폐기한다. 실제 작업공간이 오염되고 사용자
    변경과 안전하게 분리할 수 없으면 `BLOCKED`다.
 
@@ -243,6 +266,10 @@ Phase 완료 조건:
 - 해당 Independent QA `PASS`
 - unresolved major/critical finding 없음
 - Lead Phase 승인
+
+Phase 승인 이벤트는 다음 `PENDING|REWORK_PENDING` Phase 하나를 `IN_PROGRESS`로
+시작한다. 앞 Phase 변경으로 stale된 이후 Phase는 TEST와 QA를 순서대로 다시
+검증한다.
 
 모든 Phase 완료 후 계획을 `QA`로 전환하고 새 Sol로 `QA-FINAL`을 수행한다.
 

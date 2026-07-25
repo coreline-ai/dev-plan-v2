@@ -76,6 +76,8 @@
 - 완전한 `READY`, `IN_PROGRESS`, `QA` 계획 `PASS`
 - `DRAFT`는 기본 `FAIL`
 - `--target-state READY`에서 목표 상태 조건 충족 시 `PASS`
+- target READY에서 execution fields의 정의된 `UNSET/NONE` 예외 `PASS`
+- target IN_PROGRESS에서 candidate event의 execution baseline 누락 `FAIL`
 - `TODO`, `UNSET`, 예시 플레이스홀더 `FAIL`
 - 허용 경로·완료 기준·검증 절차 누락 `FAIL`
 - 너무 넓은 경로 glob `FAIL`
@@ -110,6 +112,15 @@
 - 갱신 중 각 crash point fault injection과 상태 이력 복구
 - 다중 프로세스 동일·상이 엔터티 stress test
 - 다중 엔터티 이벤트의 all-or-nothing 갱신
+- event별 from/guard/payload/evidence/error code 계약
+- 모든 허용 상태 전이↔이벤트 양방향 매핑 누락 없음
+- Phase QA FAIL·최종 QA FAIL의 DEV/TEST/QA/승인 전체 회귀
+- earliest affected Phase 활성화와 downstream `REWORK_PENDING` 순차 재검증
+- Worker/QA timeout·agent 유실 attempt 무효화
+- DEV/TEST/QA `current_run` lifecycle과 `VALID|INVALID|STALE`
+- TEST `tested_state_id`와 Worker/aggregate output state 일치
+- evidence INPUT/RESULT manifest 스키마·상위 digest/byte 검증
+- finding qualified ref와 RESOLVED/ACCEPTED_RISK ledger
 
 ## 7. 패키징 및 스킬 검증
 
@@ -147,6 +158,9 @@
 | Q | 경로·symlink 공격 | 프로젝트·evidence root 이탈 거부 |
 | R | 명령·환경 공격 | shell 미사용, 비밀 환경 제거, 로그 redaction |
 | S | 격리 QA | 원본 무변경, 응답 원문 hash 보존, 격리 공간 폐기 |
+| T | writable-root 미지원 | `MANIFEST_GUARDED` 보호 장치 사용, 준비 불가 시 `BLOCKED` |
+| U | 병렬 wave 통합 | aggregate patch·통합 테스트·preimage CAS·rollback |
+| V | 이전 QA finding | addresses/resolved 연결 없으면 완료 거부 |
 
 ## 9. 에이전트 전방 테스트
 
@@ -168,6 +182,7 @@
 - 사용자 프로젝트의 기존 미커밋 변경을 삭제·복원하지 않는다.
 - 실패 경로에서 원본 계획 파일이 byte-for-byte 보존되는지 확인한다.
 - 로그에 API 키, 인증 토큰 또는 민감 환경 변수를 기록하지 않는다.
+- secret fixture가 로그에서는 redaction되고 diff/계약에서는 fail-closed 되는지 확인한다.
 - dirty 파일과 Worker 수정이 같은 파일에 겹치면 자동 병합하지 않고 격리 patch
   충돌 또는 `BLOCKED`를 확인한다.
 

@@ -62,8 +62,10 @@
 - 높은 회귀 위험
 
 Luna는 런타임이 실제 모델 식별자를 제공할 때만 사용한다. 현재 환경에서 확인되지
-않으면 작업을 더 작은 독립 단위로 분할한 뒤 Terra 적합성을 재평가한다. 안전한
-분할이 불가능하면 `BLOCKED`다.
+않으면 현재 계획을 `BLOCKED`로 전환한다. 더 작은 Terra-safe 단위가 가능하면 원
+계획을 참조하는 replacement 계획을 새 plan ID로 만들고 검증한다. READY 이후 계획
+구조를 직접 바꾸는 `TASK_SPLIT`은 지원하지 않는다. 안전한 분할이 불가능하면
+`BLOCKED`다.
 
 가용성 정본은 런타임 위임 도구가 노출하는 모델 enum이다. Worker도
 `fork_turns: "none"`과 선택한 정확한 모델 식별자로 생성하고 전체 계획 대신 해당
@@ -99,6 +101,9 @@ allowed_paths:
 allowed_new_paths:
   - src/auth/state/**
   - tests/auth/state/**
+read_paths:
+  - src/auth/state/**
+  - tests/auth/state/**
 
 prohibited:
   - 계획 문서 수정
@@ -113,14 +118,11 @@ acceptance_criteria:
   - 만료와 로그아웃 상태를 구분한다.
   - 기존 인증 API가 유지된다.
 
-verification:
-  - kind: command
-    argv: ["npm", "test", "--", "auth/state"]
-    cwd: .
-    timeout_seconds: 300
-    expected_exit_codes: [0]
-    env_allowlist: ["PATH", "LANG", "LC_ALL", "TMPDIR"]
-    network_required: false
+verification_tests:
+  - test_id: TEST-101
+    command_sha256: 0123456789abcdef
+
+addresses_findings: []
 
 report_required:
   - changed_files
@@ -163,7 +165,9 @@ implementation_summary:
   - 인증 상태와 세션 만료 상태를 분리함
 
 tests:
-  - argv: ["npm", "test", "--", "auth/state"]
+  - test_id: TEST-101
+    command_sha256: 0123456789abcdef
+    argv: ["npm", "test", "--", "auth/state"]
     exit_code: 0
     result: PASS
     log: dev-plan/evidence/PLAN-20260725-193455/DEV-101/attempt-0001/test.log
@@ -175,6 +179,10 @@ pre_state: dev-plan/evidence/PLAN-20260725-193455/DEV-101/attempt-0001/pre-state
 post_state: dev-plan/evidence/PLAN-20260725-193455/DEV-101/attempt-0001/post-state.json
 diff: dev-plan/evidence/PLAN-20260725-193455/DEV-101/attempt-0001/diff.patch
 diff_sha256: 0123456789abcdef
+evidence_manifest:
+  path: dev-plan/evidence/PLAN-20260725-193455/DEV-101/attempt-0001/evidence-manifest.yaml
+  sha256: 0123456789abcdef
+  bytes: 4096
 ```
 
 Worker 보고는 완료 증빙이며 승인 자체가 아니다. Lead는 실제 파일과 diff를 대조한
@@ -196,7 +204,10 @@ qa_id: QA-101
 attempt: 1
 agent_id: runtime-agent-id
 requested_model: gpt-5.6-sol
+actual_model: NOT_REPORTED
 context_mode: NONE
+started_at: 2026-07-25T20:00:00+09:00
+deadline: 2026-07-25T20:30:00+09:00
 input_state_id: sha256:fedcba9876543210
 workspace_kind: disposable-snapshot
 task_contracts:
@@ -204,15 +215,18 @@ task_contracts:
 diffs:
   - dev-plan/evidence/PLAN-20260725-193455/DEV-101/attempt-0001/diff.patch
 required_tests:
-  - argv: ["npm", "test", "--", "auth/state"]
-    cwd: .
-    timeout_seconds: 300
+  - test_id: TEST-101
+    command_sha256: 0123456789abcdef
 worker_test_logs:
   - dev-plan/evidence/PLAN-20260725-193455/DEV-101/attempt-0001/test.log
-write_policy: FORBIDDEN
+write_policy: SOURCE_WRITE_FORBIDDEN_WITH_DECLARED_OUTPUTS
 allowed_generated_paths:
   - .pytest_cache/**
 ```
+
+`SOURCE_WRITE_FORBIDDEN_WITH_DECLARED_OUTPUTS`는 소스·계획·계약 수정은 금지하고,
+disposable workspace 안의 `allowed_generated_paths` 테스트 산출물만 허용한다.
+해당 경로도 realpath 기준 격리 root 밖으로 나갈 수 없다.
 
 QA 입력에서 제외한다.
 
@@ -224,6 +238,11 @@ QA 입력에서 제외한다.
 이전 QA가 찾은 개별 결함의 재현 조건은 재작업 계약에 포함할 수 있으나, 새 QA에는
 수정된 요구사항 및 실제 diff의 일부로만 제공한다.
 
+재작업 Worker 계약은 `addresses_findings`에 이전 finding ID를 반드시 기록한다.
+후속 QA는 실제 수정과 회귀 테스트를 검증한 ID를 `resolved_findings`에 기록한다.
+완료 게이트는 전체 attempt를 순회해 모든 이전 OPEN `critical|major` finding이
+`RESOLVED` 또는 사용자 승인 `ACCEPTED_RISK`인지 확인한다.
+
 ## 8. QA 출력 계약
 
 통과 예시:
@@ -233,6 +252,8 @@ report_version: codex-qa-report/v1
 qa_id: QA-101
 attempt: 1
 verdict: PASS
+input_state_id: sha256:fedcba9876543210
+termination_reason: COMPLETED
 
 requirements:
   - criterion: 만료와 로그아웃 상태 구분
@@ -242,19 +263,24 @@ requirements:
       - tests/auth/state/model.test.ts
 
 tests_reproduced:
-  - argv: ["npm", "test", "--", "auth/state"]
+  - test_id: TEST-101
+    command_sha256: 0123456789abcdef
+    argv: ["npm", "test", "--", "auth/state"]
     exit_code: 0
     result: PASS
 
 findings: []
+resolved_findings: []
 residual_risks: []
 files_modified_by_qa: []
 ```
 
 QA는 위 구조화된 내용을 최종 응답으로 반환하며 파일을 저장하지 않는다. Lead는
-에이전트 응답 원문을 `qa-response.txt`에 byte-for-byte 저장하고 원 응답과 저장
-파일의 SHA-256을 기록한다. 그 후 구조만 검증해 `qa-report.yaml`로 저장하며 판정과
-finding 내용을 편집하지 않는다.
+응답을 secret scan하고, secret이 없을 때만 `qa-response.txt`에 byte-for-byte
+저장해 원 응답과 저장 파일의 SHA-256을 기록한다. 그 후 구조만 검증해
+`qa-report.yaml`로 저장하며 판정과 finding 내용을 편집하지 않는다. secret이
+발견되면 raw 응답을 저장하거나 redaction된 판정을 대신 사용하지 않고 attempt를
+무효화해 `BLOCKED` 처리한다.
 
 실패 예시:
 
@@ -263,9 +289,11 @@ report_version: codex-qa-report/v1
 qa_id: QA-101
 attempt: 1
 verdict: FAIL
+input_state_id: sha256:fedcba9876543210
+termination_reason: COMPLETED
 
 findings:
-  - id: FINDING-001
+  - finding_ref: QA-101/A0001/F001
     severity: major
     status: OPEN
     file: src/auth/state/model.ts
@@ -275,15 +303,19 @@ findings:
     required_fix: 로그아웃 우선 전이와 회귀 테스트 추가
 
 tests_reproduced:
-  - argv: ["npm", "test", "--", "auth/state"]
+  - test_id: TEST-101
+    command_sha256: 0123456789abcdef
+    argv: ["npm", "test", "--", "auth/state"]
     exit_code: 1
     result: FAIL
 
 residual_risks: []
+resolved_findings: []
 files_modified_by_qa: []
 ```
 
-finding `severity`는 `critical|major|minor`, `status`는 `OPEN|RESOLVED|ACCEPTED_RISK`다.
+`finding_ref`는 `(qa_id, attempt, local_id)` qualified ID다. finding `severity`는
+`critical|major|minor`, `status`는 `OPEN|RESOLVED|ACCEPTED_RISK`다.
 `ACCEPTED_RISK`는 Lead가 자동 부여할 수 없고 사용자 승인과 계획
 `residual_risks` 참조가 필요하다.
 
@@ -301,6 +333,12 @@ finding `severity`는 `critical|major|minor`, `status`는 `OPEN|RESOLVED|ACCEPTE
 
 테스트가 캐시, 커버리지, 스냅샷 등 파일을 생성할 수 있으면 허용 산출물 경로를 QA
 계약에 사전 명시한다. 예상되지 않은 산출물은 수정으로 간주한다.
+
+evidence 저장 전 환경변수 이름 패턴과 런타임이 알고 있는 secret 값으로 로그·응답을
+검사한다. 로그의 일치 값은 `[REDACTED:<name>]`으로 치환하고 redaction count와 raw
+content SHA-256만 기록하며 raw content는 저장하지 않는다. diff·계약·보고서 구조
+필드에서 secret이 발견되면 적용 가능한 patch를 임의 편집하지 않고 저장과 상태
+전이를 중단해 `BLOCKED` 처리한다.
 
 ## 10. Lead 상태 갱신 계약
 

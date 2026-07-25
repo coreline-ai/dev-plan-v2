@@ -31,6 +31,8 @@
 12. QA 전후 전체 보호 manifest로 무수정 여부를 확인한다.
 13. evidence는 attempt별 append-only 경로와 SHA-256을 사용한다.
 14. API와 외부 Codex CLI를 사용하지 않는다.
+15. writable-root 미지원 환경은 `MANIFEST_GUARDED` 무결성 모델을 사용하며, 필수
+    보호 manifest·inventory·lock을 만들 수 없을 때만 `BLOCKED`다.
 
 ## 3. 구현자가 읽을 순서
 
@@ -121,7 +123,7 @@
 
 ### Phase 6. 통합·전방 검증
 
-- 기능 시나리오 A~S
+- 기능 시나리오 A~V
 - 최소 컨텍스트 신규 에이전트 전방 테스트
 - Worker/QA 생성에 `fork_turns: "none"`과 exact model ID 확인
 - QA 무수정과 독립성 검사
