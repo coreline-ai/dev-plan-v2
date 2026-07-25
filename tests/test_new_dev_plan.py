@@ -3,58 +3,26 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.plan_core import parse_plan, validate_structural
 
-
-def test_new_plan_is_structurally_valid_and_never_overwrites(
-    tmp_path: Path,
-    spec_file: Path,
-    cli,
-) -> None:
+def test_creates_a_valid_plan_without_overwriting(tmp_path: Path, cli) -> None:
     result = cli(
-        "new_dev_plan.py",
-        "--root",
-        tmp_path,
-        "--spec",
-        spec_file,
-        "--timestamp",
-        "20260725_120001",
-        "--format",
-        "json",
+        "new_dev_plan.py", "--root", tmp_path, "--purpose", "로그인 오류 수정",
+        "--scope", "src/auth", "--phase", "오류 처리", "--timestamp", "20260726_120000", "--format", "json",
     )
     assert result.returncode == 0, result.stderr
-    report = json.loads(result.stdout)
-    plan = Path(report["path"])
-    assert report["plan_status"] == "DRAFT"
-    assert not validate_structural(parse_plan(plan))
-    before = plan.read_bytes()
-
-    collision = cli(
-        "new_dev_plan.py",
-        "--root",
-        tmp_path,
-        "--spec",
-        spec_file,
-        "--timestamp",
-        "20260725_120001",
-    )
-    assert collision.returncode == 2
-    assert "PLAN_COLLISION" in collision.stderr or "already exists" in collision.stderr
-    assert plan.read_bytes() == before
+    path = Path(json.loads(result.stdout)["path"])
+    assert path.is_file()
+    assert cli("validate_dev_plan.py", path).returncode == 0
+    before = path.read_bytes()
+    assert cli("new_dev_plan.py", "--root", tmp_path, "--purpose", "다시 생성", "--timestamp", "20260726_120000").returncode == 2
+    assert path.read_bytes() == before
 
 
-def test_generated_command_digest_is_present(tmp_path: Path, spec_file: Path, cli) -> None:
+def test_plan_can_have_multiple_phases(tmp_path: Path, cli) -> None:
     result = cli(
-        "new_dev_plan.py",
-        "--root",
-        tmp_path,
-        "--spec",
-        spec_file,
-        "--timestamp",
-        "20260725_120002",
+        "new_dev_plan.py", "--root", tmp_path, "--purpose", "기능 추가", "--phase", "구현", "--phase", "테스트", "--format", "json",
     )
     assert result.returncode == 0
-    plan = tmp_path / "dev-plan" / "implement_20260725_120002.md"
-    test = parse_plan(plan).entity("TEST-101")
-    assert len(test.data["command_sha256"]) == 64
-    assert test.data["argv"] == ["python3.11", "-m", "pytest"]
+    text = Path(json.loads(result.stdout)["path"]).read_text(encoding="utf-8")
+    assert "## Phase 1. 구현" in text
+    assert "## Phase 2. 테스트" in text

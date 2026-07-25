@@ -9,3 +9,4 @@ dist/
 *.egg-info/
 .venv/
 venv/
+dev-plan/
