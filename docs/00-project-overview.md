@@ -6,7 +6,7 @@
 
 ## 제공 범위
 
-- v1-plus Markdown 개발 계획 생성과 형식/READY 검사
+- 필수 Markdown 개발 계획 생성과 형식/READY 검사
 - PLAN / EXECUTE / RESUME / QA / STATUS 운영 지침
 - 실제 런타임 모델 기반 Lead·Worker·QA 라우팅
 - 최소 런타임 패키징

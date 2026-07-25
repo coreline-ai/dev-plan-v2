@@ -1,6 +1,6 @@
 ---
 name: codex-dev-plan-orchestrator
-description: Create v1-plus phased development plans with scope, progress, model-routing, testing, and QA rules; guide explicit execution, resume, and independent QA using native Codex delegation.
+description: Create phased development plans with the essential scope, progress, model-routing, testing, and QA rules; guide explicit execution, resume, and independent QA using native Codex delegation.
 ---
 
 # Codex Dev Plan
@@ -23,17 +23,16 @@ description: Create v1-plus phased development plans with scope, progress, model
 Worker를 만들지 않는다. 범위·목적·리팩터링 방향이 달라지면 기존 계획을 억지로
 확장하지 말고 새 `implement_*.md`를 만든다.
 
-## 2. PLAN: v1-plus 계획 규약
+## 2. PLAN: 필수 계획 규약
 
 계획은 `<project>/dev-plan/implement_YYYYMMDD_HHMMSS.md`에 만들고, 다음 순서를
 유지한다.
 
 1. `개발 목적`, `개발 범위`, `제외 범위`, `참조 문서`, `공통 진행 규칙`
 2. `실행 상태 및 모델 라우팅`, `Phase 상태 요약`, `QA 관점`
-3. 순서가 있는 Phase. 각 Phase에는 `목표`, `예상 변경 파일 / 영향 범위`,
-   `구현 태스크`, `자체 테스트`, `이슈 및 수정`, `완료 조건`을 둔다.
-4. 선택적으로 `확인 필요 사항 / 결정 기록`, `잔여 리스크 / 후속 과제`,
-   `최종 결과 요약`을 추가한다.
+3. 순서가 있는 Phase. 각 Phase에는 `목표`, `구현 태스크`, `자체 테스트`,
+   `이슈 및 수정`, `완료 조건`을 둔다.
+4. `실행 기록`에는 실제 모델·추론 강도·변경 파일·테스트·QA 판정만 남긴다.
 
 각 구현·테스트·완료 조건에는 Markdown 체크박스를 사용한다. Phase 자체 테스트가
 끝나기 전 다음 Phase로 넘어가지 않는다. 이슈는 발견한 Phase 안에서 기록·수정한다.

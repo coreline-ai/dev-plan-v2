@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a v1-plus phased Markdown development plan without overwriting plans."""
+"""Create an essential phased Markdown development plan without overwriting plans."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="v1-plus 개발 계획 Markdown을 생성합니다.")
+    parser = argparse.ArgumentParser(description="필수 규약 개발 계획 Markdown을 생성합니다.")
     parser.add_argument("--root", default=".", help="대상 프로젝트 루트")
     parser.add_argument("--output-dir", help="기본값: <root>/dev-plan")
     parser.add_argument("--purpose", required=True, help="개발 목적")
@@ -43,9 +43,6 @@ def plan_text(filename: str, created_at: str, args: argparse.Namespace) -> str:
                 f"## Phase {index}. {phase}",
                 "### 목표",
                 f"- {phase}의 요청된 동작을 구현하고 검증한다.",
-                "",
-                "### 예상 변경 파일 / 영향 범위",
-                bullets(args.scope, "실행 전 변경 파일과 영향 범위를 확인 필요"),
                 "",
                 "### 구현 태스크",
                 checklist([f"{phase} 구현"], "구현 책임 단위를 정의 필요"),
@@ -109,7 +106,7 @@ def plan_text(filename: str, created_at: str, args: argparse.Namespace) -> str:
             "- [ ] QA 모델·추론 강도·판정을 실행 기록에 남긴다.",
             "",
             *phase_sections,
-            "## 최종 결과 요약",
+            "## 실행 기록",
             "- 변경 파일: 없음",
             "- 실행한 테스트: 미실행",
             "- QA 판정: 미실행",

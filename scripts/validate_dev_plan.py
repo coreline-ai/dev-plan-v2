@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v1-plus Markdown plan structure without a workflow runtime."""
+"""Validate the essential Markdown plan structure without a workflow runtime."""
 
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ from pathlib import Path
 
 REQUIRED_TOP = (
     "개발 목적", "개발 범위", "제외 범위", "참조 문서", "공통 진행 규칙",
-    "실행 상태 및 모델 라우팅", "Phase 상태 요약", "QA 관점", "최종 결과 요약",
+    "실행 상태 및 모델 라우팅", "Phase 상태 요약", "QA 관점", "실행 기록",
 )
 PHASE = re.compile(r"^## Phase ([1-9][0-9]*)\.\s+(.+)$", re.MULTILINE)
 CHECKBOX = re.compile(r"^- \[[ xX]\]\s+\S+", re.MULTILINE)
 STATE = re.compile(r"^- 계획 상태: (DRAFT|READY|IN_PROGRESS|BLOCKED|DONE)$", re.MULTILINE)
 PLACEHOLDERS = ("확인 필요", "정의 필요", "미배정", "미실행", "TODO", "TBD")
-PHASE_SECTIONS = ("목표", "예상 변경 파일 / 영향 범위", "구현 태스크", "자체 테스트", "이슈 및 수정", "완료 조건")
+PHASE_SECTIONS = ("목표", "구현 태스크", "자체 테스트", "이슈 및 수정", "완료 조건")
 
 
 def phase_ranges(text: str, matches: list[re.Match[str]]) -> list[str]:
@@ -61,7 +61,7 @@ def validate(path: Path, *, ready: bool) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="v1-plus 개발 계획 Markdown을 검사합니다.")
+    parser = argparse.ArgumentParser(description="필수 규약 개발 계획 Markdown을 검사합니다.")
     parser.add_argument("plan")
     parser.add_argument("--ready", action="store_true", help="실행 전 READY 수준의 완결성도 검사")
     parser.add_argument("--format", choices=["text", "json"], default="text")

@@ -2,7 +2,7 @@
 
 ## 자동 검증
 
-- 계획 생성 후 v1-plus 필수 섹션·Phase·체크리스트 검사
+- 계획 생성 후 필수 섹션·Phase·체크리스트 검사
 - Phase 상태 요약과 Phase 순서 일치 검사
 - 실행 상태와 Lead/Worker/QA 모델 라우팅 항목 검사
 - `--ready`에서 placeholder·상태·테스트 불완전성 거부

@@ -20,7 +20,7 @@ def test_creates_v1_plus_plan_without_overwriting(tmp_path: Path, cli) -> None:
     text = plan.read_text(encoding="utf-8")
     for heading in (
         "개발 목적", "개발 범위", "제외 범위", "참조 문서", "공통 진행 규칙",
-        "실행 상태 및 모델 라우팅", "Phase 상태 요약", "QA 관점", "최종 결과 요약",
+        "실행 상태 및 모델 라우팅", "Phase 상태 요약", "QA 관점", "실행 기록",
     ):
         assert f"## {heading}" in text
     assert "## Phase 1. 오류 처리" in text
