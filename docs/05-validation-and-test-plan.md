@@ -2,6 +2,29 @@
 
 최종 갱신: `2026-07-25 KST`
 
+## 0. 현재 자동 검증 현황
+
+이 문서는 **현재 자동화된 release 검증**과 실제 사용자 프로젝트에서 수행할
+**운영 적합성 시나리오**를 함께 관리한다. 두 범위를 완료된 것처럼 섞어 보고하지
+않는다.
+
+| 범위 | 현재 상태 |
+|---|---|
+| Python compile | PASS |
+| pytest 단위·계약·임시 프로젝트 통합 | PASS, 33 tests |
+| skill-creator quick validation | PASS |
+| runtime dependency preflight | PASS |
+| allowlist 패키지·manifest·내부 링크 | PASS |
+| 임시 패키지 생성·CLI 도움말·생성→structural validate smoke | PASS |
+| 의존성 없는 Python 3.11 환경 fail-fast | PASS |
+| 독립 코드·스키마·일관성 감사 | PASS, 잔여 BLOCKER/HIGH 없음; `docs/07` 기록 |
+| 실제 외부 프로젝트 Worker/QA 파일럿 | 설치 후 운영 게이트, 이번 원본 빌드와 분리 |
+
+아래 §3~§7은 현재 회귀 범위와 향후 hardening 항목을 함께 관리하는 테스트
+카탈로그다. 이번 release에서 실제 자동화된 항목과 결과는 위 표와 `docs/07`에
+명시하며, 목록 자체를 모두 완료된 것으로 해석하지 않는다. §8~§10 중 실제 모델
+생성·외부 프로젝트·장시간 다중 프로세스가 필요한 항목은 운영 파일럿 체크리스트다.
+
 ## 1. 품질 목표
 
 신규 스킬은 다음을 보장해야 한다.
@@ -23,7 +46,7 @@
 | 계층 | 대상 | 도구 |
 |---|---|---|
 | 정적 검증 | SKILL frontmatter, metadata, 금지 패턴 | `quick_validate.py`, 자체 검사 |
-| 단위 테스트 | 런타임 스크립트 4개, 공통 모듈, 패키징 스크립트 | `pytest` |
+| 단위 테스트 | 런타임 CLI 6개, 공통 모듈, 패키징 스크립트 | `pytest` |
 | 계약 테스트 | YAML·Markdown 스키마와 상태 전이 | fixture 기반 `pytest` |
 | 통합 테스트 | 생성→검증→상태 갱신→패키징 | 임시 프로젝트 |
 | 에이전트 전방 테스트 | 모드·라우팅·QA 행동 | 최소 컨텍스트 신규 에이전트 |
@@ -105,8 +128,8 @@
 - 체크박스 파생 갱신
 - 알 수 없는 본문과 필드 보존
 - `--dry-run` 무수정과 diff 출력
-- 잠금 충돌 처리
-- stale lock timeout·owner 검증
+- persistent `flock` 충돌·timeout 처리
+- crash/부분 owner payload 뒤 자동 커널 해제와 안전한 재획득
 - 임시 파일 검증 실패 시 원본 보존
 - 임시 파일/파일/디렉터리 `fsync`와 원자적 교체
 - 갱신 중 각 crash point fault injection과 상태 이력 복구
@@ -119,7 +142,11 @@
 - Worker/QA timeout·agent 유실 attempt 무효화
 - DEV/TEST/QA `current_run` lifecycle과 `VALID|INVALID|STALE`
 - TEST `tested_state_id`와 Worker/aggregate output state 일치
+- Worker report 시점 lease 만료 거부
+- Phase DEV 경로 계약과 integration allowlist/digest 일치
+- 거부 이벤트의 in-memory all-or-nothing
 - evidence INPUT/RESULT manifest 스키마·상위 digest/byte 검증
+- canonical workspace ID 재계산과 source 내부 disposable workspace 거부
 - finding qualified ref와 RESOLVED/ACCEPTED_RISK ledger
 
 ## 7. 패키징 및 스킬 검증
@@ -161,6 +188,7 @@
 | T | writable-root 미지원 | `MANIFEST_GUARDED` 보호 장치 사용, 준비 불가 시 `BLOCKED` |
 | U | 병렬 wave 통합 | aggregate patch·통합 테스트·preimage CAS·rollback |
 | V | 이전 QA finding | addresses/resolved 연결 없으면 완료 거부 |
+| W | source 내부 Worker/QA workspace | 시작·재검증 거부, 원본 계획 무변경 |
 
 ## 9. 에이전트 전방 테스트
 
@@ -188,17 +216,29 @@
 
 ## 11. 출시 게이트
 
-다음을 모두 충족해야 설치 가능한 릴리스로 본다.
+### 11.1 원본 스킬 release 게이트
 
-- 모든 단위·계약·통합 테스트 PASS
-- 필수 기능 시나리오 전체 PASS
-- Luna 실제 배정만 선택 시나리오이며, Luna 부재 fallback은 필수 PASS
+다음을 모두 충족하면 이 Git 저장소를 설치 가능한 **원본 release**로 판정한다.
+
+- Python compile과 전체 pytest PASS
 - `quick_validate.py` PASS
-- 패키지 내용 allowlist 검사 PASS
-- 유효한 Git HEAD와 clean release tree
-- release artifact SHA-256 기록
-- 임시 설치 폴더 smoke test와 기존 설치본 rollback test
-- API 및 외부 Codex CLI 미사용 검사 PASS
-- 기존 스킬 무변경 검사 PASS
-- Independent QA 전방 테스트 PASS
-- 재현 가능한 테스트 로그와 버전 정보 기록
+- 패키지 allowlist·내부 링크·manifest hash PASS
+- 임시 패키지에서 runtime preflight와 모든 CLI 도움말 PASS
+- 생성→structural validate smoke PASS
+- 의존성이 없는 격리 Python에서 명확한 fail-fast PASS
+- API 직접 호출·외부 Codex CLI 패턴 없음
+- 기존 `dev-plan-generator` 기준 파일 hash 무변경
+- 독립 감사에서 열린 BLOCKER/HIGH 없음
+- 유효한 `main` HEAD와 clean release tree
+- release artifact SHA-256과 검증 도구 SHA-256 기록
+
+### 11.2 설치 후 운영 게이트
+
+§8의 A~V는 설치 후 실제 사용자 프로젝트와 제공 모델에서 단계적으로 실행하는
+운영 적합성 matrix다. Luna 실제 배정은 Luna가 runtime enum에 있을 때만 선택
+시나리오로 실행한다. 필수 운영 파일럿은 PLAN 무부작용, v1 원본 보존, Terra 실행,
+QA FAIL 재작업, RESUME, 사용자 dirty 변경 보존, rollback이다.
+
+운영 파일럿을 수행하지 않은 원본 release를 “특정 외부 프로젝트 실행까지 검증됨”으로
+보고하지 않는다. 반대로 모델·권한이 필요한 운영 시나리오를 로컬 단위 테스트의
+미통과로 오기하지 않는다.

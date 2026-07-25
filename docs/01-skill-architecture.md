@@ -16,6 +16,9 @@ dev-plan-v2/
 │   ├── upgrade_dev_plan.py
 │   ├── validate_dev_plan.py
 │   ├── update_plan_state.py
+│   ├── workspace_guard.py
+│   ├── check_runtime.py
+│   ├── plan_core.py
 │   └── package_skill.py
 ├── references/
 │   ├── plan-schema-v2.md
@@ -27,6 +30,10 @@ dev-plan-v2/
 │   ├── test_upgrade_dev_plan.py
 │   ├── test_validate_dev_plan.py
 │   ├── test_update_plan_state.py
+│   ├── test_workspace_guard.py
+│   ├── test_high_risk_guards.py
+│   ├── test_lock_safety.py
+│   ├── test_verified_phase_approval.py
 │   └── test_package_skill.py
 ├── docs/
 │   └── 설계·개발·재검증 문서
@@ -34,7 +41,7 @@ dev-plan-v2/
 └── .gitignore
 ```
 
-설치 산출물에는 `SKILL.md`, `agents/openai.yaml`, 런타임용 스크립트 4개와 공통
+설치 산출물에는 `SKILL.md`, `agents/openai.yaml`, 런타임용 CLI 6개와 공통
 모듈, `references/`, 런타임 의존성 메타데이터만 포함한다. 개발 전용
 `package_skill.py`, `docs/`, `tests/`, Git 메타데이터와 개발 캐시는 제외한다.
 
@@ -147,23 +154,42 @@ Lead Sol만 호출한다.
   `dev-plan/evidence/<plan-id>/state-history/<version>-<timestamp>-<sha256>.md`에
   보존한다.
 - `--dry-run`에서 diff를 출력하고 파일을 변경하지 않는다.
-- 잠금에는 host·owner PID·생성 시각·예상 문서 digest를 기록한다. 기본 획득 대기는
-  30초, stale 기준은 10분이다. 같은 host에서 PID 종료를 확인했거나 사용자가
-  승인한 경우에만 stale lock을 회수한다.
+- 잠금은 persistent inode의 POSIX `flock`이며 host·PID·token·예상 digest는
+  진단 payload로 기록한다. 기본 획득 대기는 30초다.
+- crash 시 커널이 소유권을 해제하므로 빈/부분 payload도 재획득 가능하고, lock
+  파일을 unlink하지 않아 ABA 경쟁을 만들지 않는다.
+
+### `scripts/workspace_guard.py`
+
+- source와 외부 disposable workspace의 canonical 보호 manifest를 생성·비교하고,
+  root SHA-256 기반 workspace ID를 재계산한다.
+- 허용 경로 밖 변경, symlink 이탈, source preimage CAS 불일치를 거부한다.
+- source 통합 전에 `PREPARED` rollback journal과 백업을 저장한다.
+- 계획 승인 실패 시 source를 원복하며, crash 후 사용자 변경이 있으면 자동 복원하지
+  않는다.
+- Plan의 Phase path contract를 직접 파싱해 전달 allowlist와 정확히 대조하고,
+  source→evidence→plan 잠금 안에서 다시 확인한다.
+- integration/control-plane lock도 persistent inode `flock`을 사용한다.
+
+### `scripts/check_runtime.py`
+
+- Python 3.11, POSIX `flock`, PyYAML·markdown-it-py 버전을 설치 없이 점검한다.
+- 의존성이 없으면 traceback 대신 격리 환경 설치 안내와 비정상 종료 코드를 반환한다.
 
 ### `scripts/package_skill.py`
 
 - 파일 단위 런타임 allowlist만 임시 디렉터리에 복사한다.
 - 설치 폴더명을 `codex-dev-plan-orchestrator`로 고정한다.
 - 개발 전용 패키징 스크립트·문서·테스트·캐시·evidence를 제외한다.
+- package manifest에는 환경별 source/destination 절대 경로를 넣지 않아 같은
+  source bytes에서 같은 manifest SHA-256을 만든다.
 - 패키징 후 `quick_validate.py`를 실행할 수 있는 경로를 출력한다.
 
 ### `references/`
 
-현재 구현 전에는 `docs/02`, `docs/03`, `docs/04`가 규격 정본이다. Phase 1에서
-내용을 `references/`로 이전한 뒤에는 `references/`만 규격 정본으로 유지하고,
-해당 `docs/` 파일은 요약과 정본 링크만 남긴다. 동일 규격을 두 위치에서 수동
-복제하지 않는다.
+`references/`가 런타임 규격의 단일 정본이다. 기존 `docs/02`, `docs/03`,
+`docs/04`의 상세 내용은 `references/`로 이전했고, 해당 docs에는 요약과 정본
+링크만 유지한다. 동일 규격을 두 위치에서 수동 복제하지 않는다.
 
 ## 4. 계획 문서 저장 구조
 
@@ -222,6 +248,9 @@ dev-plan/
 가용 모델의 정본은 런타임 위임 도구가 노출하는 모델 enum이다. 현재 환경에서는
 `gpt-5.6-sol`, `gpt-5.6-terra`만 사용 가능하며 Luna는 미지원으로 처리한다.
 Worker와 QA는 `fork_turns: "none"`과 정확한 모델 식별자를 명시해 생성한다.
+모델 enum snapshot과 실제 spawn receipt는 별도 evidence 파일로 저장하고 runtime
+attestation이 path/SHA-256/bytes로 참조한다. receipt의 agent/model/context/workspace
+binding과 INPUT/RESULT workspace manifest identity를 이벤트 값과 대조한다.
 동시 슬롯이 부족하면 실패로 위장하지 않고 실행 가능한 수만 wave로 시작하고 나머지는
 순차 대기한다.
 
@@ -236,6 +265,8 @@ Worker와 QA는 `fork_turns: "none"`과 정확한 모델 식별자를 명시해 
   source integration lock, disposable workspace, invalidation/BLOCKED 규칙을 모두
   적용할 수 있을 때만 실행한다.
 - Worker와 QA는 원본 작업공간을 직접 수정하는 방식으로 병렬 실행하지 않는다.
+- `MANIFEST_GUARDED` Worker·Phase QA·최종 QA의 canonical workspace root가
+  source와 같거나 그 하위이면 시작과 evidence 재검증을 거부한다.
 - Git clean 상태는 태스크별 disposable worktree를 사용한다.
 - dirty Git 또는 비-Git 상태는 전체 보호 범위가 포함된 disposable snapshot을
   만들고 content manifest로 동일성을 확인한다.
@@ -243,6 +274,8 @@ Worker와 QA는 `fork_turns: "none"`과 정확한 모델 식별자를 명시해 
   현재 원본 상태, 충돌을 재검증한 뒤 원본에 통합한다.
 - QA는 Worker 결과가 적용된 disposable snapshot에서 테스트하고 구조화된 응답만
   반환한다. Lead가 응답 원문을 변경 없이 저장하고 SHA-256을 기록한다.
+- source 통합은 Phase QA current attempt가 `VALID/PASS`이고 disposable aggregate
+  state가 QA input과 같은 post-QA 단계에서만 허용한다.
 - 격리 공간은 성공·실패와 무관하게 감사 자료 저장 후 폐기한다.
 
 ## 7. 런타임 의존성

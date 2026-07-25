@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Dev Plan Orchestrator"
+  short_description: "Create, execute, resume, and independently QA dev plans"
+  default_prompt: "Use $codex-dev-plan-orchestrator, determine the requested mode first, and do not modify product code or delegate Workers unless EXECUTE or RESUME is explicit."

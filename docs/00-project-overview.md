@@ -125,17 +125,26 @@ v2에서 추가할 요소:
 - `assigned_model`: 런타임 enum에 존재하고 spawn에 성공한 exact requested model
   식별자 또는 `UNASSIGNED`
 
-## 8. 구현 착수 기준
+## 8. 구현 상태
 
-다음을 만족하면 스킬 코드 구현을 시작할 수 있다.
+설계 착수 기준을 충족한 뒤 다음 원본 구현을 완료했다.
 
-- 문서 간 상태·역할·경로 규칙이 일치한다.
-- `DRAFT` 구조 검증과 실행 전 검증의 차이가 정의되어 있다.
-- 상태 전이표가 결정적으로 정의되어 있다.
-- 계획 Markdown의 기계 판독 규칙이 정의되어 있다.
-- Git 및 비-Git 대상 프로젝트의 diff 정책이 정의되어 있다.
-- QA 무수정 검증과 증빙 저장 규칙이 정의되어 있다.
-- Luna 부재와 모델 선택 실패 정책이 정의되어 있다.
+- skill-creator 기반 `SKILL.md`와 `agents/openai.yaml`
+- 공통 AST/YAML parser, canonical serializer, 생성기
+- v1 보존 업그레이드
+- structural/executable 검증
+- allowlisted event state engine
+- rejected event clone transaction, digest/version CAS, persistent `flock`, history,
+  원자적 교체
+- 제한 경로·command digest·evidence 검증
+- disposable workspace, Phase-derived allowlist, aggregate provenance, rollback/commit marker
+- planning/execution/finding을 포함한 최종 evidence graph 재검증
+- 런타임 allowlist 패키징과 quick validation
+- 생성·검증·상태 전이·업그레이드·패키징 pytest
 
-위 조건은 본 문서 세트에 반영되었으며, 상세 재검증 결과는
-`docs/07-expert-revalidation.md`에 기록한다.
+런타임 규격의 단일 정본은 `references/`이며 `docs/02~04`는 정본 링크와 구현
+요약만 유지한다. 상세 구현 후 재검증 결과는
+`docs/07-expert-revalidation.md`에 누적한다.
+
+전역 스킬 폴더 설치와 실제 사용자 프로젝트 Worker 실행은 이 원본 구현의 별도
+배포·운영 단계다.

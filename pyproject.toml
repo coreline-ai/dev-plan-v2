@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-dev-plan-orchestrator"
+version = "0.1.0"
+description = "Deterministic tools for codex-dev-plan/v2 documents"
+requires-python = ">=3.11"
+dependencies = [
+  "markdown-it-py>=4.0,<5",
+  "PyYAML>=6.0.2,<7",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.3,<9",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q -p no:asyncio"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.setuptools]
+py-modules = []
