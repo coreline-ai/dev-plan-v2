@@ -14,14 +14,15 @@ import sys
 import tempfile
 from pathlib import Path
 
-SKILL_NAME = "codex-dev-plan-orchestrator"
+SKILL_NAME = "parallel-dev-plan-orchestrator"
 RUNTIME_FILES = (
     "SKILL.md",
     "agents/openai.yaml",
-    "scripts/new_dev_plan.py",
-    "scripts/validate_dev_plan.py",
-    "references/plan-format.md",
-    "references/execution-workflow.md",
+    "scripts/new_parallel_dev_plan.py",
+    "scripts/validate_parallel_dev_plan.py",
+    "scripts/check_parallel_scope.py",
+    "references/parallel-plan-format.md",
+    "references/parallel-execution-workflow.md",
 )
 DEFAULT_QUICK_VALIDATOR = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "skills" / ".system" / "skill-creator" / "scripts" / "quick_validate.py"
 

@@ -1,4 +1,4 @@
 interface:
-  display_name: "Codex Dev Plan"
-  short_description: "Create phased plans with fail-closed model routing"
-  default_prompt: "Use $codex-dev-plan-orchestrator to determine PLAN, EXECUTE, RESUME, QA, or STATUS. For execution, require explicit Sol/Terra/Luna routing and do not modify code or delegate unless execution is explicit."
+  display_name: "병렬 개발 계획"
+  short_description: "독립 작업의 병렬 개발 계획과 변경 범위를 안전하게 통제합니다"
+  default_prompt: "Use $parallel-dev-plan-orchestrator to create a 병렬개발계획 with at least two independent workstreams, non-overlapping paths, and separate tests."

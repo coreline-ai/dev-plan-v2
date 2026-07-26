@@ -1,106 +1,103 @@
 ---
-name: codex-dev-plan-orchestrator
-description: Create phased development plans with essential scope, progress, test, QA, and fail-closed native-model routing; use for PLAN, EXECUTE, RESUME, QA, or STATUS work.
+name: parallel-dev-plan-orchestrator
+description: Create and operate parallel development master plans only when the user explicitly asks for 병렬개발계획, 병렬 개발 계획, or $parallel-dev-plan-orchestrator. Use for parallel PLAN, EXECUTE, RESUME, QA, or STATUS with two or more independent workstreams, non-overlapping paths, and separate tests. For ordinary 개발계획 or 구현 계획, use dev-plan-generator (V1) instead.
 ---
 
-# Codex Dev Plan
+# Parallel Dev Plan Orchestrator
 
-이 스킬은 v1의 **범위 고정·Phase 진행·자체 테스트·독립 QA·재개 가능성**을 유지하는
-가벼운 개발 계획 스킬이다. 계획은 다른 Lead가 이어서 실행할 수 있는 작업 계약이다.
-상태 엔진, evidence DB, lock protocol, 별도 Codex CLI/API는 만들지 않는다.
+병렬 개발에서 범위 밖 변경·lane 충돌·무단 통합을 막는 V2 master 계획 스킬이다.
+일반 계획의 소유자는 V1 `dev-plan-generator`다. V2는 V1을 대체하거나 V1 파일을 수정하지 않는다.
 
-## 1. 모드와 부작용
+## 1. 선택 규칙과 모드
 
-| 사용자 의도 | 모드 | 코드 수정 | 위임 |
-|---|---|---:|---:|
-| 개발 계획 작성·수정 | `PLAN` | 금지 | 금지 |
-| 계획대로 구현 | `EXECUTE` | 허용 | 필요 시 |
-| 중단 지점부터 재개 | `RESUME` | 허용 | 필요 시 |
-| 독립 검토 | `QA` | 금지 | QA만 |
-| 진행 상태 요약 | `STATUS` | 금지 | 금지 |
+| 요청 | 사용할 스킬 | 출력 |
+|---|---|---|
+| `개발계획`, `개발 계획`, `구현 계획`, 단일 작업 | V1 `dev-plan-generator` | `dev-plan/implement_*.md` |
+| `병렬개발계획`, `병렬 개발 계획`, 명시적 `$parallel-dev-plan-orchestrator` | 이 V2 | `dev-plan/parallel/parallel_*.md` |
+| “병렬로 해줘”처럼 모호함 | workstream·경로·의존성 확인 후 선택 | 추정 금지 |
 
-명시적인 `EXECUTE` 또는 `RESUME` 요청이 없으면 코드·테스트·계획 체크를 수정하거나
-Worker를 만들지 않는다. 목적·범위·리팩터링 방향이 달라지면 기존 계획을 확장하지 말고
-새 `implement_*.md`를 만든다.
+V2 `PLAN`은 아래 세 조건이 모두 확인될 때만 만든다.
 
-## 2. PLAN: 필수 계획 규약
+1. 독립 Workstream이 둘 이상이다.
+2. 허용 경로가 서로 겹치지 않는다.
+3. Workstream별 독립 테스트가 있다.
 
-계획은 `<project>/dev-plan/implement_YYYYMMDD_HHMMSS.md`에 만든다. 순서는 다음과 같다.
+하나라도 없으면 V2 계획을 만들거나 실행하지 말고 V1 또는 직렬 작업을 안내한다.
 
-1. `개발 목적`, `개발 범위`, `제외 범위`, `참조 문서`, `공통 진행 규칙`
-2. `실행 상태 및 모델 라우팅`, `Phase 상태 요약`, `QA 관점`
-3. 순서가 있는 Phase: `목표`, `Worker 배정`, `구현 태스크`, `자체 테스트`,
-   `이슈 및 수정`, `완료 조건`
-4. `실행 기록`
+| 모드 | 코드 수정 | native 위임 |
+|---|---:|---:|
+| `PLAN` | 금지 | 금지 |
+| `EXECUTE` / `RESUME` | 허용 | 필수 |
+| `QA` | 금지 | 새 QA만 |
+| `STATUS` | 금지 | 금지 |
 
-각 구현·테스트·완료 조건에는 체크박스를 사용한다. Phase 자체 테스트가 끝나기 전 다음
-Phase로 넘어가지 않는다. 이슈는 발견한 Phase 안에서 기록·수정한다.
+## 2. PLAN: master 계획 생성과 범위 고정
+
+계획에는 V1의 `개발 목적·개발 범위·제외 범위·참조 문서·공통 진행 규칙·Phase 상태 요약·QA 관점`과 Phase별 `목표·구현 태스크·자체 테스트·이슈 및 수정·완료 조건`을 포함한다.
+
+추가로 Workstream과 `COMMON`/`INTEGRATION` 직렬 scope unit의 목표·허용/제외 경로·선행 조건·테스트를 표로 적는다.
+
+- `COMMON`은 있을 때만 **Wave 0**에서 직렬 실행한다.
+- Workstream은 **Wave 1 이상**에서 실행한다.
+- `INTEGRATION`은 마지막 Wave의 단독 직렬 unit이다.
+- 모든 계획상 scope unit은 정확히 하나의 Wave에 속한다.
+- `REWORK-WS-*`는 실행 중 lane 결함에만 쓰는 직렬 재작업 unit이다. 계획 Wave에는 미리 넣지 않는다.
+- `--previous-plan`은 이전 V1/V2 계획 경로를 참조 문서 첫 항목에만 넣고 원본을 수정하지 않는다.
 
 ```text
-python3.11 <SKILL_DIR>/scripts/new_dev_plan.py \
-  --root <project> --purpose "목적" \
-  --scope "src/example.py" --exclude "UI 변경" \
-  --phase "핵심 구현" --test "python3.11 -m pytest tests/example"
-python3.11 <SKILL_DIR>/scripts/validate_dev_plan.py <plan.md>
+python3.11 <SKILL_DIR>/scripts/new_parallel_dev_plan.py \
+  --root <project> --purpose "목적" --scope "범위" \
+  --workstream '<WS-01 JSON>' --workstream '<WS-02 JSON>' \
+  --common '<COMMON JSON>' --integration '<INTEGRATION JSON>' \
+  --phase "병렬 구현" --phase "통합 검증"
+python3.11 <SKILL_DIR>/scripts/validate_parallel_dev_plan.py \
+  <project>/dev-plan/parallel/parallel_*.md
 ```
 
-`--ready`는 실행 전 모델 preflight와 배정이 완결됐는지 검사한다. `--complete`는 실제
-host 모델, 테스트, QA PASS까지 기록됐는지 검사한다.
+입력 JSON과 master 문서 형식은 [병렬 계획 형식](references/parallel-plan-format.md)을 따른다.
 
-## 3. 비협상 모델 라우팅
+`PLAN`에 모델 ID, host actual ID, QA 결과, 실행 성공을 쓰거나 추정하지 않는다. 실행 기록은 EXECUTE 시작 시 Lead만 선택 섹션으로 추가한다.
 
-`EXECUTE`/`RESUME`에서 아래 조건은 권고가 아니라 게이트다.
+## 3. EXECUTE / RESUME: scope gate와 모델 역할
 
-| 역할 | 필수 배정 |
+실행 전에 clean Git baseline과 worktree 생성 가능 여부를 확인한다. 사용자 변경을 안전하게 보존할 수 없거나 공유 checkout뿐이면 `BLOCKED`이며 V1/직렬로 전환한다.
+
+1. `COMMON`이 있으면 별도 직렬 worktree에서 먼저 완료·테스트·scope 검사를 한다.
+2. 각 Worker에는 같은 baseline에서 만든 **별도 Git worktree**, 하나의 scope unit, 허용/제외 경로, 테스트, 완료 조건만 준다. master 계획은 Lead만 갱신한다.
+3. Worker별 `git diff --name-only <baseline>`만 `check_parallel_scope.py`에 넣는다. 합산 diff 검사는 금지한다.
+4. scope 검사와 실제 테스트를 통과한 Worker 결과만 통합한다. `INTEGRATION`은 모든 Wave 뒤에 선언된 통합 경로에서만 실행한다.
+5. 통합 중 lane 코드 결함은 광범위하게 고치지 말고 해당 `REWORK-WS-*`를 직렬로 열어 같은 scope 검사를 한다.
+
+native delegation에서는 역할별 exact override가 비협상 조건이다.
+
+| 역할 | 필수 조건 |
 |---|---|
-| Lead | 현재 Lead가 실제 지원되는 **Sol**이거나, 새 **Sol Lead**를 생성한다. 둘 다 불가하면 `BLOCKED`. |
-| ROUTINE Worker | 실제 지원되는 **Terra**에만 배정한다. |
-| COMPLEX Worker | 실제 지원되는 **Luna**에만 배정한다. Luna가 없으면 `BLOCKED` 또는 Terra-safe 단위로 재분해한다. |
-| QA | Worker와 분리된 새 컨텍스트의 실제 지원 **Sol**에만 배정한다. |
+| Lead | 실제 지원되는 Sol. 현재 Lead가 아니면 새 Sol Lead, 둘 다 불가하면 `BLOCKED` |
+| ROUTINE Worker | 실제 지원되는 Terra |
+| COMPLEX Worker | 실제 지원되는 Luna. Luna가 없으면 `BLOCKED` 또는 Terra-safe 단위로 재분해 |
+| QA | Worker와 분리된 새 Sol 컨텍스트 |
 
-Terra를 Luna의 조용한 대체 모델로 사용하지 않는다. 기본 세션 모델 상속, 모델명 추정,
-`actual model` 누락도 성공적인 배정이 아니다.
+모든 위임은 `fork_turns: "none"` 수준의 최소 컨텍스트와 정확한 요청 모델을 명시한다. host가 actual model ID를 반환하면 원문 그대로 기록한다. 반환하지 않거나 요청과 다르면 성공으로 추정하지 않고 `BLOCKED`다.
 
-## 4. EXECUTE와 RESUME
+`RESUME`은 실행 기록이 없으면 미실행 PLAN의 첫 미완료 Phase부터 시작한다. 기록이 있으면 기록·Git diff·마지막 테스트를 대조하며, 불명확하면 완료로 추정하지 않는다.
 
-1. 계획 상태·현재 Phase·체크·Git diff·마지막 테스트 결과를 확인한다.
-2. **실행 전에** 네이티브 위임 런타임이 제공하는 모델 목록을 조회하고, 정확한 ID를
-   `확인된 런타임 모델`에 기록한다. Sol이 없으면 새 Sol Lead를 생성하거나 `BLOCKED`다.
-3. Lead/각 Worker/QA에 `requested model`을 그 정확한 ID로 지정하고
-   `fork_turns: "none"`(또는 동일한 최소 컨텍스트 설정)으로 생성한다.
-4. 생성 후 host가 반환한 실제 모델 ID를 `actual model`에 그대로 기록한다. 반환값이
-   없거나 요청 ID와 다르면 결과를 수용하지 말고 `BLOCKED`로 기록한다.
-5. `--ready`를 통과한 뒤, Worker에게 한 책임 단위의 목표·허용 파일·읽을 파일·완료
-   기준·테스트·짧은 보고 형식만 전달한다. Worker는 계획을 수정하지 않는다.
-6. Lead가 Worker diff와 테스트를 직접 확인한 뒤 체크를 갱신한다. `RESUME`은 첫
-   미완료 Phase부터 시작하며 기록이 불명확하면 완료로 추정하지 않고 `BLOCKED`다.
+자세한 순서와 실행 기록은 [병렬 실행 흐름](references/parallel-execution-workflow.md)을 따른다.
 
-`PLAN` 문서는 모델 ID를 예측하지 않는다. `UNVERIFIED`/`UNASSIGNED`/`PENDING`은
-DRAFT에서만 허용된다. 추론 강도는 런타임에 별도 설정했을 때만 사실대로 기록할 수 있지만,
-모델 역할을 대체하는 필수 계약은 아니다.
+## 4. QA와 완료
 
-## 5. QA와 완료
+QA는 Worker와 분리된 새 Sol 컨텍스트에 다음 사실만 전달한다.
 
-QA에는 완료 조건, diff, 변경 파일, 실제 테스트 결과만 준다. Lead의 예상 결론이나
-Worker 자기평가는 주지 않는다. 새 Sol QA는 `PASS`, `FIX`, `BLOCKED` 중 하나를 반환하며
-소스·계획을 직접 수정하지 않는다.
+- 목적·완료 조건·scope unit 경계
+- 실제 per-unit/final diff와 scope 결과
+- 실제 테스트 결과
 
-`PASS`일 때만 Phase 완료와 QA 체크를 갱신한다. 최종 완료 전에는 다음을 실행한다.
+QA는 `PASS` / `FIX` / `BLOCKED` 중 하나를 낸다. Lead의 예상 결론·Worker 자기평가는 전달하지 않는다. `PASS` 전에는 완료 체크를 갱신하지 않는다.
 
-```text
-python3.11 <SKILL_DIR>/scripts/validate_dev_plan.py <plan.md> --complete
-```
+자동 테스트는 Markdown 구조, 경로 소유권, Wave 정합성, 패키지 상태만 검증한다. native delegation, host 모델 metadata, 실제 QA 성공은 Codex 호스트 smoke에서만 성공 또는 정직한 `BLOCKED`로 기록한다.
 
-이 검사는 Lead/Worker/QA의 `requested model == actual model`, 모든 Phase 완료, 실제
-테스트·Worker 보고, QA `PASS`를 요구한다.
+## 5. 범위 불변 규칙
 
-## 6. 공통 규칙
-
-- 기존 계획을 덮어쓰지 않는다. 같은 workstream만 같은 파일을 갱신한다.
-- 문서에 없는 기능·리팩터링·의존성을 추가하지 않는다.
-- 기존 프로젝트 API·공식 SDK·표준 라이브러리를 우선한다.
-- API 직접 호출, 별도 Codex CLI, 중첩 Codex 프로세스를 사용하지 않는다.
-- Git diff·실제 테스트·런타임 host가 보고한 모델 ID가 실행 결과의 정본이다.
-
-상세 형식: [계획 형식](references/plan-format.md) ·
-[실행 흐름](references/execution-workflow.md)
+- 선언되지 않은 파일·기능·리팩터링·의존성·공개 API/스키마 변경은 완료 처리하지 않는다.
+- 경로 소유권은 하나의 scope unit에만 둔다. overlap, glob, 상위 경로는 계획 단계에서 거부한다.
+- Lead와 독립 QA의 실제 diff 검토는 파일 경로 검사로 대체되지 않는다.
+- 상태 DB, evidence 그래프, 다중 잠금, 별도 Worker 런타임, 직접 API/CLI 호출은 이 스킬 범위 밖이다.
