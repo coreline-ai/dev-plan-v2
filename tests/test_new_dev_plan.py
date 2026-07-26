@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 
 
+RUNTIME_ALL = "gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna"
+
+
 def create(tmp_path: Path, cli, stamp: str = "20260726_140000") -> Path:
     result = cli(
         "new_dev_plan.py", "--root", tmp_path, "--purpose", "로그인 오류 수정",
@@ -13,6 +16,21 @@ def create(tmp_path: Path, cli, stamp: str = "20260726_140000") -> Path:
     )
     assert result.returncode == 0, result.stderr
     return Path(json.loads(result.stdout)["path"])
+
+
+def ready_text(text: str, runtime: str = RUNTIME_ALL) -> str:
+    replacements = {
+        "- 계획 상태: DRAFT": "- 계획 상태: READY",
+        "- 확인된 런타임 모델: UNVERIFIED": f"- 확인된 런타임 모델: {runtime}",
+        "- Lead requested model: UNASSIGNED (Sol)": "- Lead requested model: gpt-5.6-sol",
+        "- QA requested model: UNASSIGNED (Sol, fresh)": "- QA requested model: gpt-5.6-sol",
+        "- requested model: UNASSIGNED (Terra)": "- requested model: gpt-5.6-terra",
+        "- requested model: UNASSIGNED (Luna)": "- requested model: gpt-5.6-luna",
+        "- 마지막 확인: 미실행": "- 마지막 확인: 2026-07-26 모델 preflight 확인",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
 
 
 def test_creates_v1_plus_plan_without_overwriting(tmp_path: Path, cli) -> None:
@@ -25,7 +43,9 @@ def test_creates_v1_plus_plan_without_overwriting(tmp_path: Path, cli) -> None:
         assert f"## {heading}" in text
     assert "## Phase 1. 오류 처리" in text
     assert "## Phase 2. 회귀 검증" in text
-    assert "### 자체 테스트" in text
+    assert "### Worker 배정" in text
+    assert "- 작업 등급: ROUTINE" in text
+    assert "- context: fork_turns: none" in text
     assert cli("validate_dev_plan.py", plan).returncode == 0
 
     before = plan.read_bytes()
@@ -36,22 +56,54 @@ def test_creates_v1_plus_plan_without_overwriting(tmp_path: Path, cli) -> None:
     assert plan.read_bytes() == before
 
 
-def test_ready_validation_requires_resolved_execution_details(tmp_path: Path, cli) -> None:
+def test_ready_validation_requires_exact_listed_model_assignments(tmp_path: Path, cli) -> None:
     plan = create(tmp_path, cli, "20260726_140001")
     assert cli("validate_dev_plan.py", plan, "--ready").returncode == 1
 
-    text = plan.read_text(encoding="utf-8")
+    plan.write_text(ready_text(plan.read_text(encoding="utf-8")), encoding="utf-8")
+    assert cli("validate_dev_plan.py", plan, "--ready").returncode == 0
+
+    text = plan.read_text(encoding="utf-8").replace(
+        "- Lead requested model: gpt-5.6-sol", "- Lead requested model: gpt-5.5-sol"
+    )
+    plan.write_text(text, encoding="utf-8")
+    assert cli("validate_dev_plan.py", plan, "--ready").returncode == 1
+
+
+def test_ready_rejects_complex_phase_when_luna_is_unavailable(tmp_path: Path, cli) -> None:
+    result = cli(
+        "new_dev_plan.py", "--root", tmp_path, "--purpose", "복잡 기능",
+        "--scope", "src/complex.py", "--phase", "복잡 구현", "--complex-phase", "복잡 구현",
+        "--test", "python3.11 -m unittest", "--timestamp", "20260726_140002", "--format", "json",
+    )
+    assert result.returncode == 0, result.stderr
+    plan = Path(json.loads(result.stdout)["path"])
+    plan.write_text(ready_text(plan.read_text(encoding="utf-8"), "gpt-5.6-sol, gpt-5.6-terra"), encoding="utf-8")
+
+    check = cli("validate_dev_plan.py", plan, "--ready", "--format", "json")
+    assert check.returncode == 1
+    assert any("Luna" in error for error in json.loads(check.stdout)["errors"])
+
+
+def test_complete_requires_host_actual_models_to_match_requested(tmp_path: Path, cli) -> None:
+    plan = create(tmp_path, cli, "20260726_140003")
+    text = ready_text(plan.read_text(encoding="utf-8"))
     replacements = {
-        "- 계획 상태: DRAFT": "- 계획 상태: READY",
-        "- Lead: 실행 전 실제 Sol 모델 기록 (reasoning: high)": "- Lead: gpt-5.6-sol (reasoning: high)",
-        "- ROUTINE Worker: 실행 전 실제 Terra 모델 기록 (reasoning: medium)": "- ROUTINE Worker: gpt-5.6-terra (reasoning: medium)",
-        "- COMPLEX Worker: 실행 전 실제 Luna 모델 확인; 없으면 BLOCKED 또는 재분해 (reasoning: high)": "- COMPLEX Worker: gpt-5.6-luna 또는 BLOCKED (reasoning: high)",
-        "- Independent QA: 새 Sol 컨텍스트로 실행 전 실제 모델 기록 (reasoning: high)": "- Independent QA: gpt-5.6-sol 새 컨텍스트 (reasoning: high)",
-        "- 마지막 확인: 미실행": "- 마지막 확인: 2026-07-26 모델 확인",
-        "- 실행한 테스트: 미실행": "- 실행한 테스트: 테스트 명령 등록",
-        "- QA 판정: 미실행": "- QA 판정: 실행 전",
+        "- 계획 상태: READY": "- 계획 상태: DONE",
+        "- Lead actual model: PENDING": "- Lead actual model: gpt-5.6-sol",
+        "- QA actual model: PENDING": "- QA actual model: gpt-5.6-sol",
+        "- actual model: PENDING": "- actual model: gpt-5.6-terra",
+        "- QA verdict: PENDING": "- QA verdict: PASS",
+        "- 실행한 테스트: 미실행": "- 실행한 테스트: python3.11 -m unittest discover -s tests (PASS)",
+        "- Worker 보고: 미실행": "- Worker 보고: 두 Phase 완료, diff와 테스트 보고됨",
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
-    plan.write_text(text, encoding="utf-8")
-    assert cli("validate_dev_plan.py", plan, "--ready").returncode == 0
+    plan.write_text(text.replace("- [ ]", "- [x]"), encoding="utf-8")
+    assert cli("validate_dev_plan.py", plan, "--complete").returncode == 0
+
+    mismatch = plan.read_text(encoding="utf-8").replace(
+        "- actual model: gpt-5.6-terra", "- actual model: gpt-5.7-terra", 1
+    )
+    plan.write_text(mismatch, encoding="utf-8")
+    assert cli("validate_dev_plan.py", plan, "--complete").returncode == 1
