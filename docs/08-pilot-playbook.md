@@ -41,3 +41,21 @@
 - 통합에서 광범위한 lane 재수정이 필요함
 
 파일럿에서 조율 비용이 절약 시간보다 크면 병렬 Workstream을 늘리지 않고 V1 직렬 계획으로 전환한다.
+
+## 2026-08-13 제한적 파일럿 결과
+
+설치된 최소 runtime 패키지(`5e59b83` 기준)를 사용해 임시 Python 저장소에서 수동 end-to-end 파일럿을 수행했다.
+
+| 단계 | 결과 |
+|---|---|
+| ASSESS | 독립 API/Web 책임을 `PARALLEL_SAFE`로 판정 |
+| PLAN | JSON 정본과 Markdown 표현 생성·검증 통과 |
+| PREFLIGHT | clean baseline에서 `PREFLIGHT_READY` |
+| Worktree | 같은 baseline에서 API/Web 별도 worktree 생성 |
+| WS-01 | 독립 unittest 및 `SCOPE_OK`, ledger `passed` |
+| WS-02 | 독립 unittest 및 `SCOPE_OK`, ledger `passed` |
+| INTEGRATION | 두 commit 순차 merge, 전체 unittest 2개 통과 |
+| RESUME 검증 | `status --verify-git`가 `EXECUTION_COMPLETE` 반환 |
+| 직렬 전환 smoke | semantic blocker 입력이 `SERIAL_RECOMMENDED` 반환 |
+
+파일럿은 임시 저장소와 임시 worktree만 사용했으며 제품 저장소를 수정하지 않았다. 작업량이 매우 작은 예제라 속도 향상을 입증하는 벤치마크가 아니라, 경로 격리·증거 기록·통합 절차의 실행 가능성을 검증한 smoke다.
