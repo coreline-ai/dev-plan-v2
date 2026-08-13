@@ -1,135 +1,173 @@
 #!/usr/bin/env python3
-"""Check one isolated scope-unit diff against a parallel master plan.
-
-The command deliberately accepts one `--scope-unit` and that unit's own
-`--changed-file` list only. It is not an aggregate-diff checker.
-"""
+"""Check one scope unit against the complete Git change set of its worktree."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import re
+import os
+import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-FORBIDDEN_PATH_TOKENS = set("*?[]{}")
-
-
-@dataclass(frozen=True)
-class Unit:
-    unit_id: str
-    allow: tuple[str, ...]
-    exclude: tuple[str, ...]
+from parallel_plan_lib import load_json, path_matches, plan_units, validate_plan
 
 
-def split_cells(line: str) -> list[str]:
-    if not line.startswith("|") or not line.endswith("|"):
-        raise ValueError("Markdown 표 행이 아닙니다.")
-    return [cell.strip() for cell in line[1:-1].split("|")]
+def git(repo: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
 
 
-def items(cell: str) -> tuple[str, ...]:
-    if cell.strip() in {"", "-"}:
-        return ()
-    raw = re.sub(r"`([^`]*)`", r"\1", cell).replace("&#124;", "|")
-    return tuple(item.strip() for item in raw.split(",") if item.strip())
+def _text(value: bytes) -> str:
+    return value.decode("utf-8", "replace")
 
 
-def section_body(text: str, heading: str) -> str:
-    found = re.search(rf"^## {re.escape(heading)}\s*$", text, re.MULTILINE)
-    if not found:
-        raise ValueError(f"필수 섹션이 없습니다: {heading}")
-    next_heading = re.search(r"^## (?!#)", text[found.end():], re.MULTILINE)
-    end = found.end() + next_heading.start() if next_heading else len(text)
-    return text[found.end():end]
+def _git_path(value: bytes) -> str:
+    path = _text(value)
+    if not path or path.startswith(("/", "~")) or ".." in path.split("/"):
+        raise ValueError(f"Git returned an unsafe repository path: {path!r}")
+    return path
 
 
-def read_units(text: str, heading: str) -> list[Unit]:
-    lines = [line for line in section_body(text, heading).splitlines() if line.strip()]
-    if len(lines) < 3:
-        raise ValueError(f"{heading} 표가 비어 있습니다.")
-    if split_cells(lines[0]) != ["ID", "목표", "허용 경로", "제외 경로", "선행 조건", "테스트"]:
-        raise ValueError(f"{heading} 표 헤더가 올바르지 않습니다.")
-    result: list[Unit] = []
-    for line in lines[2:]:
-        row = split_cells(line)
-        if len(row) != 6:
-            raise ValueError(f"{heading} 표 열 수가 올바르지 않습니다.")
-        result.append(Unit(row[0], items(row[2]), items(row[3])))
-    return result
+def collect_changes(repo: Path, baseline: str) -> list[dict[str, str]]:
+    resolved = git(repo, "rev-parse", "--verify", f"{baseline}^{{commit}}")
+    if resolved.returncode:
+        raise ValueError(f"Git baseline cannot be resolved: {baseline}")
+    changed = git(repo, "diff", "-M", "--name-status", "-z", resolved.stdout.strip().decode("ascii"), "--")
+    if changed.returncode:
+        raise ValueError(_text(changed.stderr).strip() or "git diff failed")
+    tokens = changed.stdout.split(b"\0")
+    if tokens and tokens[-1] == b"":
+        tokens.pop()
+    details: list[dict[str, str]] = []
+    index = 0
+    while index < len(tokens):
+        status = _text(tokens[index])
+        index += 1
+        if not status:
+            raise ValueError("git diff returned an empty status")
+        if status.startswith(("R", "C")):
+            if index + 1 >= len(tokens):
+                raise ValueError("git diff returned an incomplete rename/copy record")
+            old_path, new_path = _git_path(tokens[index]), _git_path(tokens[index + 1])
+            index += 2
+            details.append({"status": status, "role": "old", "path": old_path})
+            details.append({"status": status, "role": "new", "path": new_path})
+        else:
+            if index >= len(tokens):
+                raise ValueError("git diff returned an incomplete path record")
+            details.append({"status": status, "role": "path", "path": _git_path(tokens[index])})
+            index += 1
+    untracked = git(repo, "ls-files", "--others", "--exclude-standard", "-z")
+    if untracked.returncode:
+        raise ValueError(_text(untracked.stderr).strip() or "git ls-files failed")
+    for raw in untracked.stdout.split(b"\0"):
+        if raw:
+            details.append({"status": "??", "role": "untracked", "path": _git_path(raw)})
+    return details
 
 
-def read_plan(path: Path) -> list[Unit]:
-    text = path.read_text(encoding="utf-8")
-    return read_units(text, "Workstream 맵") + read_units(text, "직렬 scope unit")
+def change_fingerprint(repo: Path, baseline: str, changes: list[dict[str, str]]) -> str:
+    """Hash tracked diff bytes plus untracked path/content for resume verification."""
+    resolved = git(repo, "rev-parse", "--verify", f"{baseline}^{{commit}}")
+    if resolved.returncode:
+        raise ValueError(f"Git baseline cannot be resolved: {baseline}")
+    diff = git(repo, "diff", "--binary", resolved.stdout.strip().decode("ascii"), "--")
+    if diff.returncode:
+        raise ValueError(_text(diff.stderr).strip() or "git diff fingerprint failed")
+    digest = hashlib.sha256(diff.stdout)
+    for change in sorted((item for item in changes if item["status"] == "??"), key=lambda item: item["path"]):
+        relative = change["path"]
+        path = repo / relative
+        digest.update(b"\0untracked\0")
+        digest.update(relative.encode("utf-8", "surrogatepass"))
+        if path.is_symlink():
+            digest.update(b"\0symlink\0")
+            digest.update(os.readlink(path).encode("utf-8", "surrogatepass"))
+        else:
+            digest.update(b"\0file\0")
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
-def normalise_changed_path(path: str) -> str:
-    value = path.strip()
-    if not value or value.startswith("/") or value.startswith("~") or "\\" in value:
-        raise ValueError(f"changed file은 저장소 기준 상대 POSIX 경로여야 합니다: {path}")
-    if ".." in value.split("/") or any(token in value for token in FORBIDDEN_PATH_TOKENS):
-        raise ValueError(f"changed file에 상위 경로 또는 glob을 쓸 수 없습니다: {path}")
-    return value
-
-
-def matches(path: str, allowed: str) -> bool:
-    return path.startswith(allowed) if allowed.endswith("/") else path == allowed
-
-
-def effective_unit(units: list[Unit], requested: str) -> tuple[Unit, list[Unit]]:
+def effective_unit(units: list[dict[str, Any]], requested: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if requested.startswith("REWORK-"):
         base_id = requested.removeprefix("REWORK-")
-        base = next((unit for unit in units if unit.unit_id == base_id and base_id.startswith("WS-")), None)
+        base = next((unit for unit in units if unit["id"] == base_id and base_id.startswith("WS-")), None)
         if base is None:
-            raise ValueError(f"REWORK 대상 Workstream을 찾을 수 없습니다: {requested}")
-        rework = Unit(requested, base.allow, base.exclude)
-        return rework, [rework if unit.unit_id == base_id else unit for unit in units]
-    unit = next((item for item in units if item.unit_id == requested), None)
-    if unit is None:
-        raise ValueError(f"scope unit을 찾을 수 없습니다: {requested}")
-    return unit, units
+            raise ValueError(f"REWORK target workstream does not exist: {requested}")
+        rework = {**base, "id": requested}
+        ownership = [rework if unit["id"] == base_id else unit for unit in units]
+        return rework, ownership
+    current = next((unit for unit in units if unit["id"] == requested), None)
+    if current is None:
+        raise ValueError(f"scope unit does not exist: {requested}")
+    return current, units
 
 
-def check(units: list[Unit], requested: str, changed_files: list[str]) -> tuple[str, list[dict[str, object]]]:
-    current, ownership_units = effective_unit(units, requested)
-    details: list[dict[str, object]] = []
-    has_ambiguous = False
-    has_violation = False
-    for raw_path in changed_files:
-        path = normalise_changed_path(raw_path)
-        owners = [unit.unit_id for unit in ownership_units if any(matches(path, allowed) for allowed in unit.allow)]
-        excluded = any(matches(path, blocked) for blocked in current.exclude)
-        allowed_here = current.unit_id in owners and not excluded
+def check(plan: dict[str, Any], requested: str, changes: list[dict[str, str]]) -> tuple[str, list[dict[str, object]]]:
+    current, ownership_units = effective_unit(plan_units(plan), requested)
+    results: list[dict[str, object]] = []
+    ambiguous = False
+    violation = False
+    for change in changes:
+        path = change["path"]
+        owners = [
+            unit["id"]
+            for unit in ownership_units
+            if any(path_matches(path, owned) for owned in unit["write_paths"])
+        ]
+        excluded = any(path_matches(path, blocked) for blocked in current["exclude_paths"])
         if len(owners) > 1:
             outcome = "ambiguous"
-            has_ambiguous = True
-        elif not allowed_here:
+            ambiguous = True
+        elif current["id"] not in owners or excluded:
             outcome = "violation"
-            has_violation = True
+            violation = True
         else:
             outcome = "ok"
-        details.append({"path": path, "owners": owners, "outcome": outcome})
-    if has_ambiguous:
-        return "SCOPE_AMBIGUOUS", details
-    if has_violation:
-        return "SCOPE_VIOLATION", details
-    return "SCOPE_OK", details
+        results.append({**change, "owners": owners, "outcome": outcome})
+    if ambiguous:
+        return "SCOPE_AMBIGUOUS", results
+    if violation:
+        return "SCOPE_VIOLATION", results
+    if not results:
+        return "SCOPE_EMPTY", results
+    return "SCOPE_OK", results
 
 
 def main(argv: list[str] | None = None) -> int:
-    command = argparse.ArgumentParser(description="한 scope unit의 격리 changed-file 목록만 검사합니다.")
-    command.add_argument("plan")
-    command.add_argument("--scope-unit", required=True, help="WS-01, COMMON, INTEGRATION 또는 REWORK-WS-01")
-    command.add_argument("--changed-file", action="append", default=[], help="해당 worktree의 changed file (반복 가능)")
-    command.add_argument("--format", choices=("text", "json"), default="text")
-    args = command.parse_args(argv)
+    parser = argparse.ArgumentParser(description="한 scope unit의 실제 Git 변경 전체를 계획 write 경로와 대조합니다.")
+    parser.add_argument("--plan", required=True, help="parallel-dev-plan/v3 JSON")
+    parser.add_argument("--scope-unit", required=True, help="WS-01, COMMON, INTEGRATION 또는 REWORK-WS-01")
+    parser.add_argument("--repo", default=".", help="검사할 Worker worktree root")
+    parser.add_argument("--baseline", required=True, help="lane baseline commit")
+    parser.add_argument("--format", choices=("text", "json"), default="text")
+    args = parser.parse_args(argv)
     try:
-        units = read_plan(Path(args.plan).expanduser().resolve())
-        status, details = check(units, args.scope_unit, args.changed_file)
-        report = {"status": status, "scope_unit": args.scope_unit, "files": details}
+        plan = load_json(Path(args.plan).expanduser().resolve())
+        errors = validate_plan(plan)
+        if errors:
+            raise ValueError("invalid plan: " + "; ".join(errors))
+        repo = Path(args.repo).expanduser().resolve()
+        top = git(repo, "rev-parse", "--show-toplevel")
+        if top.returncode or Path(_text(top.stdout).strip()).resolve() != repo:
+            raise ValueError("--repo must be a Git worktree root")
+        changes = collect_changes(repo, args.baseline)
+        status, files = check(plan, args.scope_unit, changes)
+        report: dict[str, object] = {
+            "status": status,
+            "scope_unit": args.scope_unit,
+            "baseline": args.baseline,
+            "repo": str(repo),
+            "files": files,
+        }
         code = 0 if status == "SCOPE_OK" else 1
     except (OSError, UnicodeError, ValueError) as exc:
         report = {"status": "SCOPE_AMBIGUOUS", "scope_unit": args.scope_unit, "error": str(exc), "files": []}
@@ -138,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print(report["status"])
-        if "error" in report:
+        if report.get("error"):
             print(f"- {report['error']}", file=sys.stderr)
     return code
 

@@ -2,12 +2,17 @@
 
 ## 자동 검증
 
-- V2 전용 파일명·상단 섹션·Phase 형식
-- 최소 두 Workstream, 비중복 허용 경로, 테스트, dependency와 Wave 정합성
-- COMMON Wave 0, INTEGRATION 마지막 Wave, scope unit 단 한 번 배정
-- 한 worktree의 own/cross-lane/unowned/ambiguous changed-file 결과
-- `--previous-plan` 이력 연결, V1/V2 출력 경로 분리, 패키지 allowlist·링크
+- 직렬·COMMON 선행·병렬 안전성 판정과 사유
+- JSON schema, 경로 소유권, dependency와 Wave
+- JSON에서 렌더링한 Markdown의 일치
+- clean Git baseline과 COMMON 이후 lane baseline
+- tracked·staged·unstaged·untracked·delete·rename scope 결과
+- 실행 ledger의 plan hash, commit, 테스트 종료 코드, 위험도별 QA
+- V1/V2 출력 경로 분리와 패키지 allowlist
 
-## Codex host smoke
+## 실제 smoke
 
-자동 테스트와 분리해 실제 Codex 호스트에서 Sol Lead, Terra Worker, 새 Sol QA, worktree, host actual model ID를 확인한다. 결과는 실제 성공 또는 정직한 `BLOCKED`만 기록한다.
+- 의미적으로 결합된 요청이 직렬로 전환되는지 확인
+- COMMON commit 이후 두 worktree가 같은 baseline에서 시작하는지 확인
+- lane 위반이 통합 전에 차단되는지 확인
+- 중단 후 ledger와 Git 상태로 재개 또는 정직한 차단이 되는지 확인

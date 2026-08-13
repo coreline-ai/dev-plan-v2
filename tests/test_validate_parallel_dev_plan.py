@@ -1,45 +1,84 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from test_parallel_dev_plan import create_plan
+from test_parallel_dev_plan import candidate, create_plan, write_spec
 
 
-def test_validator_rejects_overlapping_workstream_paths(tmp_path: Path, cli) -> None:
+def test_assessment_reports_safe_common_and_serial_decisions(tmp_path: Path, cli) -> None:
+    safe = write_spec(tmp_path, candidate(common=False), "safe.json")
+    result = cli("assess_parallelism.py", safe, "--format", "json")
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["decision"] == "PARALLEL_SAFE"
+
+    common = write_spec(tmp_path, candidate(common=True), "common.json")
+    result = cli("assess_parallelism.py", common, "--format", "json")
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["decision"] == "COMMON_FIRST"
+
+    serial_value = candidate(common=False)
+    serial_value["workstreams"] = serial_value["workstreams"][:1]
+    serial_value["integration"]["depends_on"] = ["WS-01"]
+    serial = write_spec(tmp_path, serial_value, "serial.json")
+    result = cli("assess_parallelism.py", serial, "--format", "json")
+    assert result.returncode == 1
+    assert json.loads(result.stdout)["decision"] == "SERIAL_RECOMMENDED"
+
+
+def test_assessment_rejects_write_overlap_and_missing_tests(tmp_path: Path, cli) -> None:
+    value = candidate(common=False)
+    value["workstreams"][1]["write_paths"] = ["src/api/"]
+    value["workstreams"][0]["tests"] = []
+    spec = write_spec(tmp_path, value)
+    result = cli("assess_parallelism.py", spec, "--format", "json")
+    report = json.loads(result.stdout)
+    assert result.returncode == 1
+    assert report["decision"] == "SERIAL_RECOMMENDED"
+    assert any("overlaps" in reason for reason in report["reasons"])
+    assert any("independent test" in reason for reason in report["reasons"])
+
+
+def test_validator_rejects_json_markdown_drift(tmp_path: Path, cli) -> None:
     plan = create_plan(tmp_path, cli)
-    text = plan.read_text(encoding="utf-8").replace("`src/web/`, `tests/web/`", "`src/api/`", 1)
-    plan.write_text(text, encoding="utf-8")
+    markdown = plan.with_suffix(".md")
+    markdown.write_text(markdown.read_text(encoding="utf-8") + "\nmanual drift\n", encoding="utf-8")
     result = cli("validate_parallel_dev_plan.py", plan, "--format", "json")
     assert result.returncode == 1
-    assert "겹칩니다" in result.stdout
+    assert "does not match" in result.stdout
 
 
-def test_validator_rejects_missing_or_wrong_wave_assignment(tmp_path: Path, cli) -> None:
-    plan = create_plan(tmp_path, cli, "20260726_160101")
-    text = plan.read_text(encoding="utf-8").replace("- Wave 0: COMMON\n", "")
-    plan.write_text(text, encoding="utf-8")
+def test_validator_rejects_plan_path_overlap_and_wrong_waves(tmp_path: Path, cli) -> None:
+    plan = create_plan(tmp_path, cli, "20260813_130001", common=False)
+    payload = json.loads(plan.read_text(encoding="utf-8"))
+    payload["workstreams"][1]["write_paths"] = ["src/api/"]
+    payload["waves"] = [{"number": 1, "units": ["WS-01"]}, {"number": 2, "units": ["INTEGRATION"]}]
+    plan.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     result = cli("validate_parallel_dev_plan.py", plan, "--format", "json")
     assert result.returncode == 1
-    assert "Wave" in result.stdout
+    assert "ownership overlaps" in result.stdout
+    assert "waves do not match" in result.stdout
 
-    plan = create_plan(tmp_path, cli, "20260726_160102")
-    text = plan.read_text(encoding="utf-8").replace("- Wave 2: INTEGRATION", "- Wave 1: INTEGRATION")
-    plan.write_text(text, encoding="utf-8")
-    result = cli("validate_parallel_dev_plan.py", plan, "--format", "json")
+
+def test_noncanonical_paths_are_blocked(tmp_path: Path, cli) -> None:
+    value = candidate(common=False)
+    value["workstreams"][0]["write_paths"] = ["./src/api/"]
+    spec = write_spec(tmp_path, value)
+    result = cli("assess_parallelism.py", spec, "--format", "json")
     assert result.returncode == 1
-    assert "INTEGRATION" in result.stdout
+    report = json.loads(result.stdout)
+    assert report["decision"] == "BLOCKED"
 
 
-def test_validator_allows_optional_execution_record_without_claiming_success(tmp_path: Path, cli) -> None:
-    plan = create_plan(tmp_path, cli, "20260726_160103", common=False)
-    text = plan.read_text(encoding="utf-8")
-    assert "- Wave 1: WS-01, WS-02" in text
-    assert "- Wave 2: INTEGRATION" in text
-    plan.write_text(text + "\n## 실행 기록\n- 시작 시각: 미실행\n", encoding="utf-8")
-    assert cli("validate_parallel_dev_plan.py", plan).returncode == 0
+def test_unknown_candidate_fields_and_schema_are_blocked(tmp_path: Path, cli) -> None:
+    value = candidate(common=False)
+    value["unexpected"] = True
+    spec = write_spec(tmp_path, value, "unknown.json")
+    result = cli("assess_parallelism.py", spec, "--format", "json")
+    assert json.loads(result.stdout)["decision"] == "BLOCKED"
 
-
-def test_validator_rejects_wrong_filename(tmp_path: Path, cli) -> None:
-    path = tmp_path / "plan.md"
-    path.write_text("# plan.md\n", encoding="utf-8")
-    assert cli("validate_parallel_dev_plan.py", path).returncode == 1
+    value = candidate(common=False)
+    value["schema"] = "parallel-dev-candidate/v999"
+    spec = write_spec(tmp_path, value, "schema.json")
+    result = cli("assess_parallelism.py", spec, "--format", "json")
+    assert json.loads(result.stdout)["decision"] == "BLOCKED"

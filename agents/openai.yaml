@@ -1,4 +1,4 @@
 interface:
   display_name: "병렬 개발 계획"
-  short_description: "독립 작업의 병렬 개발 계획과 변경 범위를 안전하게 통제합니다"
-  default_prompt: "Use $parallel-dev-plan-orchestrator to create a 병렬개발계획 with at least two independent workstreams, non-overlapping paths, and separate tests."
+  short_description: "병렬 적합성을 먼저 판단하고 독립 작업만 안전하게 실행합니다"
+  default_prompt: "Use $parallel-dev-plan-orchestrator to assess whether this work is naturally parallelizable. Prefer serial work when responsibilities or contracts are coupled; create a V2 plan only for independent write scopes with separate tests."

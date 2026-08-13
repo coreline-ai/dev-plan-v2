@@ -18,9 +18,13 @@ SKILL_NAME = "parallel-dev-plan-orchestrator"
 RUNTIME_FILES = (
     "SKILL.md",
     "agents/openai.yaml",
+    "scripts/parallel_plan_lib.py",
+    "scripts/assess_parallelism.py",
     "scripts/new_parallel_dev_plan.py",
     "scripts/validate_parallel_dev_plan.py",
+    "scripts/preflight_parallel_exec.py",
     "scripts/check_parallel_scope.py",
+    "scripts/execution_ledger.py",
     "references/parallel-plan-format.md",
     "references/parallel-execution-workflow.md",
 )
