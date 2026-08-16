@@ -15,6 +15,7 @@ DECISIONS = {"SERIAL_RECOMMENDED", "COMMON_FIRST", "PARALLEL_SAFE", "BLOCKED"}
 RISKS = {"low", "medium", "high", "critical"}
 WORKSTREAM_ID = re.compile(r"WS-(?:0[1-9]|[1-9][0-9])$")
 FORBIDDEN_PATH_TOKENS = set("*?[]{}")
+LEAD_ONLY_PATHS = ("docs/dev-lessons/",)
 UNIT_FIELDS = {
     "id", "goal", "write_paths", "allow", "read_context", "exclude_paths", "exclude",
     "depends_on", "tests", "required_capabilities", "risk",
@@ -172,6 +173,22 @@ def _ownership_errors(units: Iterable[dict[str, Any]]) -> list[str]:
     return errors
 
 
+def _lead_only_path_errors(units: Iterable[dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    for unit in units:
+        for path in unit["write_paths"]:
+            normalized = path.rstrip("/")
+            for reserved in LEAD_ONLY_PATHS:
+                reserved_normalized = reserved.rstrip("/")
+                if (
+                    normalized == reserved_normalized
+                    or normalized.startswith(reserved_normalized + "/")
+                    or reserved_normalized.startswith(normalized + "/")
+                ):
+                    errors.append(f"{unit['id']} cannot own Lead-only path {reserved}: {path}")
+    return errors
+
+
 def _dependency_errors(candidate: dict[str, Any]) -> list[str]:
     common = candidate["common"]
     workstreams = candidate["workstreams"]
@@ -211,11 +228,15 @@ def assess_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     if len(ids) != len(set(ids)):
         blockers.append("workstream ids are duplicated")
     blockers.extend(_dependency_errors(candidate))
-    ownership = _ownership_errors(([candidate["common"]] if candidate["common"] else []) + workstreams + ([candidate["integration"]] if candidate["integration"] else []))
+    units = ([candidate["common"]] if candidate["common"] else []) + workstreams + ([candidate["integration"]] if candidate["integration"] else [])
+    blockers.extend(_lead_only_path_errors(units))
+    ownership = _ownership_errors(units)
     if ownership:
         serial.extend(ownership)
     if len(workstreams) < 2:
         serial.append("fewer than two natural workstreams were identified")
+    if not candidate["assessment_reasons"]:
+        serial.append("necessity, independence, and parallel benefit were not confirmed")
     for unit in workstreams:
         if not unit["write_paths"]:
             serial.append(f"{unit['id']} has no independent write path")
@@ -223,6 +244,8 @@ def assess_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
             serial.append(f"{unit['id']} has no independent test")
     if candidate["semantic_blockers"]:
         serial.extend(f"semantic blocker: {item}" for item in candidate["semantic_blockers"])
+    if candidate["coordination_risks"]:
+        serial.extend(f"coordination risk remains: {item}" for item in candidate["coordination_risks"])
     if candidate["common"] and not candidate["common"]["tests"]:
         blockers.append("COMMON requires at least one independent test")
     if candidate["common"]:
@@ -352,6 +375,7 @@ def validate_plan(plan: object) -> list[str]:
             }
         )
         errors.extend(_dependency_errors(candidate))
+        errors.extend(_lead_only_path_errors(plan_units(plan)))
         errors.extend(_ownership_errors(plan_units(plan)))
         if len(candidate["workstreams"]) < 2:
             errors.append("at least two workstreams are required")

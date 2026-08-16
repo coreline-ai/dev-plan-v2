@@ -24,9 +24,12 @@ RUNTIME_FILES = (
     "scripts/validate_parallel_dev_plan.py",
     "scripts/preflight_parallel_exec.py",
     "scripts/check_parallel_scope.py",
+    "scripts/check_dev_lesson_tool.py",
     "scripts/execution_ledger.py",
+    "scripts/execution_outcomes.py",
     "references/parallel-plan-format.md",
     "references/parallel-execution-workflow.md",
+    "references/dev-lesson-adapter.md",
 )
 DEFAULT_QUICK_VALIDATOR = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "skills" / ".system" / "skill-creator" / "scripts" / "quick_validate.py"
 

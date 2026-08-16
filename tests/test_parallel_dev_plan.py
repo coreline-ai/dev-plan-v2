@@ -38,7 +38,10 @@ def candidate(*, common: bool = True, blockers: list[str] | None = None) -> dict
         "references": ["README.md"],
         "semantic_blockers": blockers or [],
         "shared_contracts": contract,
-        "coordination_risks": ["오류 코드 불일치"] if common else [],
+        "coordination_risks": [],
+        "assessment_reasons": [
+            "모든 lane은 최소 구현에 필요하고 독립 테스트가 가능하며 동시 실행 이점이 명확하다"
+        ],
         "common": unit("COMMON", "공통 오류 계약", contract, ["pytest tests/contracts"], risk="high") if common else None,
         "workstreams": [
             unit("WS-01", "API 오류 처리", ["src/api/", "tests/api/"], ["pytest tests/api"], read_context=contract, depends_on=dependency),
@@ -106,7 +109,20 @@ def test_serial_recommendation_creates_no_v2_files(tmp_path: Path, cli) -> None:
     assert result.returncode == 1
     report = json.loads(result.stdout)
     assert report["status"] == "SERIAL_RECOMMENDED"
+    assert report["created"] is False
+    assert report["next"] == "Use dev-plan-generator (V1) for a serial plan."
     assert not (tmp_path / "dev-plan" / "parallel").exists()
+    assert not list(tmp_path.rglob("parallel_*.execution.json"))
+    assert not list(tmp_path.rglob("parallel_*.outcomes.json"))
+
+
+def test_parallel_plan_creation_publishes_one_json_markdown_pair_only(tmp_path: Path, cli) -> None:
+    plan = create_plan(tmp_path, cli, "20260813_120004", common=False)
+    output_files = sorted(item.name for item in plan.parent.iterdir())
+    assert output_files == [
+        "parallel_20260813_120004.json",
+        "parallel_20260813_120004.md",
+    ]
 
 
 def test_previous_v1_plan_is_referenced_without_mutation(tmp_path: Path, cli) -> None:
@@ -138,3 +154,22 @@ def test_pair_creation_is_collision_safe(tmp_path: Path, cli) -> None:
     assert collision.returncode == 2
     assert plan.read_bytes() == before_json
     assert plan.with_suffix(".md").read_bytes() == before_md
+
+
+def test_dev_lesson_directory_is_reserved_for_post_qa_lead(tmp_path: Path, cli) -> None:
+    for write_path in ("docs/", "docs/dev-lessons/", "docs/dev-lessons/DL-test.md"):
+        value = candidate(common=False)
+        value["workstreams"][0]["write_paths"] = [write_path]
+        spec = write_spec(tmp_path, value, f"reserved-{len(write_path)}.json")
+        assessed = cli("assess_parallelism.py", spec, "--format", "json")
+        report = json.loads(assessed.stdout)
+        assert assessed.returncode == 1
+        assert report["decision"] == "BLOCKED"
+        assert any("Lead-only path" in reason for reason in report["reasons"])
+
+    allowed = candidate(common=False)
+    allowed["workstreams"][0]["write_paths"] = ["docs/api/"]
+    spec = write_spec(tmp_path, allowed, "unrelated-docs.json")
+    assessed = cli("assess_parallelism.py", spec, "--format", "json")
+    assert assessed.returncode == 0
+    assert json.loads(assessed.stdout)["decision"] == "PARALLEL_SAFE"

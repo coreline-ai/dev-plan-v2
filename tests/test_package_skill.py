@@ -33,9 +33,12 @@ def test_package_contains_only_parallel_v2_runtime(tmp_path: Path, cli) -> None:
         "scripts/validate_parallel_dev_plan.py",
         "scripts/preflight_parallel_exec.py",
         "scripts/check_parallel_scope.py",
+        "scripts/check_dev_lesson_tool.py",
         "scripts/execution_ledger.py",
+        "scripts/execution_outcomes.py",
         "references/parallel-plan-format.md",
         "references/parallel-execution-workflow.md",
+        "references/dev-lesson-adapter.md",
     }
     assert not (destination / "scripts" / "new_dev_plan.py").exists()
     assert not (destination / "references" / "plan-format.md").exists()

@@ -12,7 +12,7 @@ from parallel_plan_lib import assess_candidate, load_json, normalise_candidate
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="병렬화 적합성을 직렬·COMMON 선행·안전한 병렬로 판정합니다.")
+    parser = argparse.ArgumentParser(description="필요성·독립성·실제 속도 이점으로 직렬·COMMON 선행·안전한 병렬을 판정합니다.")
     parser.add_argument("spec", help="parallel-dev-candidate/v1 JSON 파일")
     parser.add_argument("--format", choices=("text", "json"), default="text")
     args = parser.parse_args(argv)
