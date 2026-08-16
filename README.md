@@ -2,6 +2,8 @@
 
 # ⚡ Parallel Dev Plan Orchestrator
 
+<img width="2752" height="1536" alt="효율적인_병렬_개발_가이드" src="https://github.com/user-attachments/assets/21c95165-5b6a-44a4-8ba6-6b5ca2168cec" />
+
 **필요한 작업만 병렬화하고, 애매한 작업은 빠르게 직렬로 전환하는 Codex 개발 오케스트레이션 스킬**
 
 [![CI](https://github.com/coreline-ai/dev-plan-v2/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/coreline-ai/dev-plan-v2/actions/workflows/test.yml)
