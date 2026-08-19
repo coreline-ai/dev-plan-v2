@@ -1,4 +1,4 @@
 interface:
   display_name: "병렬 개발 계획"
   short_description: "병렬 적합성을 먼저 판단하고 독립 작업만 안전하게 실행합니다"
-  default_prompt: "Use $parallel-dev-plan-orchestrator once to confirm every workstream is necessary, independently implementable, and clearly faster in parallel. Do not compare request count with workstream count or create lanes for tests, docs, refactors, QA, or lessons. If benefit is unclear or residual coordination risk remains, return SERIAL_RECOMMENDED without creating V2 artifacts; otherwise continue through the existing V2 PLAN and execution gates."
+  default_prompt: "Use $parallel-dev-plan-orchestrator only for this explicit 병렬 개발 계획 request and run ASSESS once. Do not compare request count with workstream count or create lanes for tests, docs, refactors, QA, or lessons; return SERIAL_RECOMMENDED without V2 artifacts when independent parallel speedup is unclear."

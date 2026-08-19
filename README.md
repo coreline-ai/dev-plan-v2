@@ -25,6 +25,9 @@
 
 병렬 실행이 적합한 경우에는 격리된 Git worktree, 독점 write scope, 독립 테스트, 위험도 기반 QA, 재개 가능한 ledger를 적용합니다. 병렬 이점이 불명확하거나 조율 위험이 남으면 V2 산출물을 만들지 않고 즉시 직렬 경로로 전환하며, 실행 후 문제와 재발 방지 교훈은 Dev Lesson 흐름으로 보존합니다.
 
+> [!IMPORTANT]
+> **V1과 V2는 별도 설치입니다.** 일반 `개발 계획`·`구현 계획`은 V1 [`dev-plan-generator`](https://github.com/coreline-ai/dev-plan-skill)가 처리하고, 이 V2는 명시적인 `병렬 개발 계획`·`병렬화 가능한지 판단` 요청만 처리합니다. V2만 설치해도 V1이나 일반 개발 계획 기능이 자동으로 설치되지 않습니다.
+
 ## 🇺🇸 English Summary
 
 `Parallel Dev Plan Orchestrator` is a Codex skill that evaluates **necessity, independence, and real delivery-time benefit** once, then selects serial implementation, a COMMON-first flow, or safe parallel execution. It never manufactures workstreams to match the number of user requests; only responsibilities required by the completion criteria can become lanes.
@@ -174,7 +177,18 @@ flowchart TD
 - Git과 `git worktree`
 - Python `3.11` 또는 `3.12`
 - Codex skill runtime
-- Dev Lesson을 연동할 경우 V1 `dev-plan-generator`
+- 일반 개발 계획·직렬 fallback·Dev Lesson 연동을 위한 별도 V1 `dev-plan-generator`
+
+### 0. V1을 먼저 별도 설치
+
+```bash
+git clone https://github.com/coreline-ai/dev-plan-skill.git
+SKILLS_ROOT="${CODEX_HOME:-$HOME/.codex}/skills"
+mkdir -p "$SKILLS_ROOT"
+cp -R dev-plan-skill/dev-plan-generator "$SKILLS_ROOT/dev-plan-generator"
+```
+
+V1 없이도 V2는 명시적 병렬 요청의 ASSESS를 수행할 수 있지만, `SERIAL_RECOMMENDED` 이후 일반 개발 계획을 대신 만들거나 Dev Lesson 연동 성공을 가장하지 않습니다.
 
 ### 1. 저장소 받기
 
@@ -364,6 +378,18 @@ mkdir -p "$SKILLS_ROOT"
 cp -R dist/parallel-dev-plan-orchestrator "$SKILLS_ROOT/"
 ```
 
+V1/V2 canonical 경로와 동일 V2 name 중복을 read-only로 확인합니다.
+
+```bash
+python3.11 scripts/check_dev_lesson_tool.py \
+  --check-install-layout \
+  --format json
+```
+
+- V1 canonical: `${CODEX_HOME:-$HOME/.codex}/skills/dev-plan-generator`
+- V2 canonical: `${CODEX_HOME:-$HOME/.codex}/skills/parallel-dev-plan-orchestrator`
+- `DUPLICATE_SKILL_NAME`: 충돌 경로와 hash를 보고하지만 어떤 설치본도 자동 삭제하지 않음
+
 > [!CAUTION]
 > 기존 설치본이 있다면 바로 덮어쓰지 말고 현재 설치본을 백업한 뒤 source/package 검증 결과를 확인하세요.
 
@@ -452,6 +478,8 @@ python3.11 scripts/check_dev_lesson_tool.py --format json
 - `LESSON_TOOL_UNAVAILABLE`: 성공으로 추정하지 않고 warning 또는 `record-pending` 보존
 - 검색 0건: 정상 결과이며 Workstream을 추가하지 않음
 - 적용 Lesson: 관련 구현의 완료 조건과 회귀 테스트에 반영
+
+위 기본 명령은 V1 capability만 확인합니다. V1/V2 별도 설치와 중복 V2까지 확인하려면 `--check-install-layout`을 함께 사용하세요.
 
 상세 내용은 [V2 Dev Lesson adapter](references/dev-lesson-adapter.md)를 참고하세요.
 

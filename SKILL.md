@@ -1,6 +1,6 @@
 ---
 name: parallel-dev-plan-orchestrator
-description: Assess and operate parallel development only when the user explicitly asks for 병렬개발계획, 병렬 개발 계획, or $parallel-dev-plan-orchestrator. Default to dev-plan-generator for ordinary or semantically coupled work. Create V2 plans only when every workstream is necessary, independently implementable, and clearly faster in parallel; otherwise immediately recommend serial work or a COMMON-first flow.
+description: Assess and operate parallel development only when the user explicitly asks for 병렬개발계획, 병렬 개발 계획, 병렬 계획, 병렬화 가능한지 판단, or $parallel-dev-plan-orchestrator. Ordinary requests such as 개발 계획, 개발계획, 구현 계획, 작업 계획, 개발 순서, and 계획 세워줘 belong to the separately installed dev-plan-generator. Create V2 plans only when every workstream is necessary, independently implementable, and clearly faster in parallel; otherwise immediately recommend serial work or a COMMON-first flow.
 ---
 
 # Parallel Dev Plan Orchestrator
@@ -11,14 +11,16 @@ description: Assess and operate parallel development only when the user explicit
 
 | 요청·판정 | 처리 |
 |---|---|
-| 일반 `개발계획`, 결합 작업 | V1 `dev-plan-generator` |
-| 명시적 `병렬개발계획` | 먼저 V2 `ASSESS` |
+| 일반 `개발 계획`, `개발계획`, `구현 계획`, `작업 계획`, `개발 순서`, `계획 세워줘`, 결합 작업 | 별도 설치된 V1 `dev-plan-generator` |
+| 명시적 `병렬 개발 계획`, `병렬개발계획`, `병렬 계획`, `병렬화 가능한지 판단` | 먼저 V2 `ASSESS` |
 | `SERIAL_RECOMMENDED` | V2 파일을 만들지 않고 V1/직렬 안내 |
 | `COMMON_FIRST` | 공유 계약을 직렬 확정한 뒤 제한적 병렬 실행 |
 | `PARALLEL_SAFE` | V2 PLAN/EXECUTE 허용 |
 | 근거·Git 상태 불명확 | `BLOCKED` |
 
 사용자 요청 항목 수와 Workstream 수는 비교하지 않는다. 하나의 요청도 여러 필수 책임으로 나뉠 수 있고, 여러 요청도 같은 계약에 결합될 수 있다. 경로가 다르다는 사실만으로 독립 작업으로 보지 않는다.
+
+V1과 V2는 별도 패키지다. V2는 V1을 내장하거나 자동 설치하지 않는다. V1이 없으면 일반 개발 계획과 직렬 fallback 계획을 실행할 수 있다고 가장하지 말고, V1 설치 주소와 제한사항을 명시한다. V2는 그 상태에서도 명시적 병렬 요청의 ASSESS는 수행할 수 있지만 Dev Lesson 연동 실패를 `LESSON_TOOL_UNAVAILABLE`로 보존한다.
 
 ## 2. 모드
 
@@ -48,6 +50,8 @@ V1을 먼저 설치하고 호환 capability를 확인한다.
 
 ```text
 python3.11 <SKILL_DIR>/scripts/check_dev_lesson_tool.py --format json
+python3.11 <SKILL_DIR>/scripts/check_dev_lesson_tool.py \
+  --check-install-layout --format json
 ```
 
 ```text

@@ -2,6 +2,8 @@
 
 이 문서는 V1 `dev-plan-generator`가 소유한 공통 Dev Lesson 정책·도구를 V2 실행에서 사용하는 얇은 어댑터 규칙이다. V2 패키지는 공통 스크립트를 복제하지 않는다.
 
+V1과 V2는 별도 설치다. V2 설치만으로 V1 공통 도구나 일반 개발 계획 동작이 생기지 않으며, V1 부재는 명시적으로 보고한다.
+
 ## 1. 공통 도구 확인
 
 활성 skill metadata에서 `dev-plan-generator`의 실제 설치 경로를 확인하고 `<DEV_PLAN_SKILL_DIR>/scripts/dev_lesson.py`를 사용한다. 사용자 홈 절대경로를 문서나 계획에 고정하지 않는다. V1 `find` 결과의 `repo_path`만 candidate references에 사용한다.
